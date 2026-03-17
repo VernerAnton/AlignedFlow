@@ -4,14 +4,17 @@
 // =====================================================
 
 const CACHE_NAME = 'alignedflow-v1';
+// Derive base path from registration scope so the app works at any URL depth
+// (e.g. https://verneranton.github.io/AlignedFlow/ or http://localhost:8080/)
+const SCOPE = self.registration.scope; // always ends with '/'
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/app.js',
-  '/sounds.js',
-  '/manifest.json',
-  '/icon.svg',
+  SCOPE,
+  SCOPE + 'index.html',
+  SCOPE + 'styles.css',
+  SCOPE + 'app.js',
+  SCOPE + 'sounds.js',
+  SCOPE + 'manifest.json',
+  SCOPE + 'icon.svg',
 ];
 
 // ── Install: cache all assets ──
@@ -90,8 +93,8 @@ function scheduleTransitionNotification(delay, title, body, tag) {
 function showTransitionNotification(title, body, tag) {
   self.registration.showNotification(title, {
     body,
-    icon: '/icon.svg',
-    badge: '/icon.svg',
+    icon: SCOPE + 'icon.svg',
+    badge: SCOPE + 'icon.svg',
     tag: tag || 'alignedflow-transition',
     renotify: true,
     silent: false,
@@ -125,7 +128,7 @@ self.addEventListener('notificationclick', (event) => {
         for (const client of clientList) {
           if ('focus' in client) return client.focus();
         }
-        if (self.clients.openWindow) return self.clients.openWindow('/');
+        if (self.clients.openWindow) return self.clients.openWindow(SCOPE);
       })
   );
 });
