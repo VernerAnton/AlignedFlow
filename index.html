@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#4A90D9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1c2633" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="Workday timer with posture and movement guidance">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="AlignedFlow">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <title>AlignedFlow</title>
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══════════════════════════════════ HEADER ══════════════════════════════════ -->
+  <header>
+    <div class="header-logo">
+      <img src="icon.svg" alt="" width="28" height="28">
+      <span class="header-logo-name">AlignedFlow</span>
+    </div>
+
+    <!-- Mode Tabs -->
+    <nav class="mode-tabs" role="tablist" aria-label="App modes">
+      <button id="mode-tab-1" class="mode-tab active" role="tab" aria-selected="true" aria-controls="mode-1">
+        Workday Timer
+      </button>
+      <button id="mode-tab-2" class="mode-tab" role="tab" aria-selected="false" aria-controls="mode-2">
+        Mode 2
+      </button>
+    </nav>
+
+    <!-- Header Actions -->
+    <div class="header-actions">
+      <button id="mute-btn" class="icon-btn" title="Mute sounds" aria-label="Toggle sound">🔔</button>
+      <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Open settings">⚙️</button>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════════ MODE 1 ══════════════════════════════════ -->
+  <main id="mode-1" role="tabpanel" aria-labelledby="mode-tab-1">
+
+    <!-- Timer Display -->
+    <section id="timer-display" aria-live="polite" aria-atomic="true">
+      <span id="phase-badge" class="phase-badge work">Work Session</span>
+      <span id="session-indicator" class="session-indicator">Session 1 of 4</span>
+
+      <div class="timer-ring-wrap">
+        <svg class="timer-ring-svg" viewBox="0 0 200 200" aria-hidden="true">
+          <circle class="ring-track" cx="100" cy="100" r="88"/>
+          <circle id="ring-progress" class="ring-progress" cx="100" cy="100" r="88"
+            stroke-dasharray="552.92" stroke-dashoffset="0"/>
+        </svg>
+        <div class="timer-center-text">
+          <span id="timer-digits" class="timer-digits">25:00</span>
+          <span id="timer-label" class="timer-label">remaining</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Timer Controls -->
+    <section id="controls" aria-label="Timer controls">
+      <button id="start-btn" class="btn btn-primary">
+        ▶ Start
+      </button>
+      <button id="stop-btn" class="btn btn-secondary hidden">
+        ⏸ Pause
+      </button>
+      <button id="reset-btn" class="btn btn-ghost">
+        ↺ Reset
+      </button>
+    </section>
+
+    <!-- ── WORK PHASE CONTENT ── -->
+    <div id="work-content" class="phase-panel">
+      <h2 class="panel-heading">Posture Setup</h2>
+
+      <ul class="checklist" aria-label="Posture checklist">
+        <li>
+          <span class="checklist-item-title">Neutral Neck Position</span>
+          <span class="checklist-item-desc">
+            Do a double-chin movement, then release 20–30% of the way back out.
+            Ears over shoulders — this is your target position.
+          </span>
+        </li>
+        <li>
+          <span class="checklist-item-title">Collarbones wide, shoulders heavy</span>
+          <span class="checklist-item-desc">
+            Open your chest by widening the ribcage — not by squeezing shoulder blades.
+            Let shoulders drop and feel heavy. Head will naturally retract.
+          </span>
+        </li>
+        <li>
+          <span class="checklist-item-title">Forearms on desk</span>
+          <span class="checklist-item-desc">
+            Position forearms roughly half on the desk while typing.
+            This takes load off the neck and shoulders.
+          </span>
+        </li>
+      </ul>
+
+      <button id="posture-set-btn" class="action-btn action-btn-work" aria-label="Mark posture as set">
+        Posture Set
+      </button>
+    </div>
+
+    <!-- ── SHORT BREAK PHASE CONTENT ── -->
+    <div id="short-break-content" class="phase-panel hidden">
+      <h2 class="panel-heading">Micro Reset</h2>
+
+      <div class="exercise-card">
+        <div class="exercise-card-title green">⟳ Reset A — Shoulder Sequence</div>
+        <div class="exercise-card-body">
+          Shrug shoulders up toward ears → roll them back → drop them down.
+          Repeat 3×. Then take 3 slow belly breaths.
+        </div>
+        <span class="exercise-card-duration">20 seconds</span>
+      </div>
+
+      <div class="exercise-card">
+        <div class="exercise-card-title green">⟳ Reset B — Neck De-bracing</div>
+        <div class="exercise-card-body">
+          Sit tall. Gently glide your head straight back (subtle — like making a double chin).
+          Do 5 small nods. Hold the last one for 5 seconds.
+        </div>
+        <span class="exercise-card-duration">15 seconds</span>
+      </div>
+
+      <div class="exercise-card">
+        <div class="exercise-card-title green">↗ Levator Scapulae Stretch</div>
+        <div class="exercise-card-body">
+          Sit tall and drop your right shoulder. Tilt your head to the left and slightly
+          forward at 45°. Feel the stretch from the shoulder-neck junction up toward your skull.
+          <br><br>
+          <strong>Right side (priority):</strong> 20 sec &nbsp;·&nbsp; <strong>Left side:</strong> 12 sec
+        </div>
+        <span class="exercise-card-duration">~35 seconds total</span>
+      </div>
+
+      <button id="micro-reset-done-btn" class="action-btn action-btn-green" aria-label="Mark micro reset as done">
+        Micro Reset Done
+      </button>
+    </div>
+
+    <!-- ── LONG BREAK PHASE CONTENT ── -->
+    <div id="long-break-content" class="phase-panel hidden">
+      <h2 class="panel-heading">Long Break</h2>
+
+      <div class="exercise-card">
+        <div class="exercise-card-title purple">◎ DCF Wall Protocol</div>
+        <div class="exercise-card-body">
+          Stand or sit with the back of your skull against the wall. Keep your chin
+          level — don't tuck. Gently nod toward your throat (like a subtle double-chin).
+          <br><br>
+          Hold 10 seconds → release 5 seconds → repeat 10 reps.
+          <br><br>
+          <strong>Key:</strong> Keep the SCM (front of neck) soft. If it hardens, the movement is too big.
+        </div>
+        <span class="exercise-card-duration">10 reps × 15 sec ≈ 2.5 min</span>
+      </div>
+
+      <div class="exercise-card">
+        <div class="exercise-card-title purple">↔ Pec Minor Doorframe Stretch</div>
+        <div class="exercise-card-body">
+          Stand in a doorframe with your forearms on the frame — elbows at shoulder height,
+          forearms vertical. Step one foot forward and gently lean through the doorway.
+          Feel the stretch across the front of your chest.
+          <br><br>
+          <strong>1.</strong> Elbows at 90° — hold 30 sec<br>
+          <strong>2.</strong> Arms in Y-shape (~135°) — hold 30 sec<br>
+          <strong>3.</strong> Back to 90° with focus on the sternum — hold 30 sec
+        </div>
+        <span class="exercise-card-duration">90 seconds total</span>
+      </div>
+
+      <div class="done-buttons-row">
+        <button id="dcf-done-btn" class="action-btn action-btn-purple" aria-label="Mark DCF protocol as done">
+          DCF Done
+        </button>
+        <button id="pec-done-btn" class="action-btn action-btn-purple" aria-label="Mark pec stretch as done">
+          Pec Stretch Done
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ═══════════════════════════════ POSTURE REMINDER ═══════════════════════════ -->
+  <!-- Collapsed posture reminder: bottom bar (mobile) or side panel (desktop) -->
+  <div id="posture-reminder" class="hidden" role="complementary" aria-label="Posture reminder">
+    <span class="reminder-label">Posture</span>
+    <span class="reminder-dot" aria-hidden="true"></span>
+    <span class="reminder-text">Neck neutral · Collarbones wide · Forearms on desk</span>
+  </div>
+
+  <!-- ═══════════════════════════════════ MODE 2 ══════════════════════════════════ -->
+  <div id="mode-2" class="hidden" role="tabpanel" aria-labelledby="mode-tab-2">
+    <div class="coming-soon-icon" aria-hidden="true">🌿</div>
+    <h2 class="coming-soon-title">Mode 2</h2>
+    <p class="coming-soon-desc">
+      A new mode is in the works. Check back soon.
+    </p>
+    <span class="coming-soon-badge">Coming Soon</span>
+  </div>
+
+  <!-- ═══════════════════════════════════ SETTINGS ════════════════════════════════ -->
+  <div id="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div id="settings-panel">
+      <div class="settings-header">
+        <h2 id="settings-title" class="settings-title">Settings</h2>
+        <button id="settings-close-btn" class="settings-close" aria-label="Close settings">✕</button>
+      </div>
+
+      <div class="settings-group">
+
+        <!-- Work Duration -->
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-label-text">Work session</div>
+            <div class="setting-label-sub">Minutes per session</div>
+          </div>
+          <div class="setting-input-wrap">
+            <button class="stepper-btn stepper-dec" aria-label="Decrease work duration">−</button>
+            <input id="input-work" class="setting-number-input" type="number"
+              min="1" max="120" value="25" aria-label="Work session minutes">
+            <button class="stepper-btn stepper-inc" aria-label="Increase work duration">+</button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Short Break -->
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-label-text">Short break</div>
+            <div class="setting-label-sub">Minimum 3 minutes</div>
+          </div>
+          <div class="setting-input-wrap">
+            <button class="stepper-btn stepper-dec" aria-label="Decrease short break">−</button>
+            <input id="input-short-break" class="setting-number-input" type="number"
+              min="3" max="60" value="5" aria-label="Short break minutes">
+            <button class="stepper-btn stepper-inc" aria-label="Increase short break">+</button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Long Break -->
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-label-text">Long break</div>
+            <div class="setting-label-sub">Minimum 10 minutes</div>
+          </div>
+          <div class="setting-input-wrap">
+            <button class="stepper-btn stepper-dec" aria-label="Decrease long break">−</button>
+            <input id="input-long-break" class="setting-number-input" type="number"
+              min="10" max="120" value="15" aria-label="Long break minutes">
+            <button class="stepper-btn stepper-inc" aria-label="Increase long break">+</button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Sessions Before Long Break -->
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-label-text">Sessions before long break</div>
+            <div class="setting-label-sub">1 to 4 sessions</div>
+          </div>
+          <div class="setting-input-wrap">
+            <button class="stepper-btn stepper-dec" aria-label="Decrease sessions">−</button>
+            <input id="input-sessions" class="setting-number-input" type="number"
+              min="1" max="4" value="4" aria-label="Sessions before long break">
+            <button class="stepper-btn stepper-inc" aria-label="Increase sessions">+</button>
+          </div>
+        </div>
+
+      </div>
+
+      <p class="settings-note">
+        Changes apply from the next phase. The current phase continues uninterrupted.
+      </p>
+
+      <button id="settings-save-btn" class="btn btn-primary action-btn settings-save-btn">
+        Save Settings
+      </button>
+    </div>
+  </div>
+
+</div><!-- /#app -->
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
