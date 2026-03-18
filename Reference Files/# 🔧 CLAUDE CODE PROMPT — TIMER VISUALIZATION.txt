@@ -1,0 +1,319 @@
+# 🔧 CLAUDE CODE PROMPT — TIMER VISUALIZATION SYSTEM
+
+Paste everything below into Claude Code:
+
+---
+
+## 🧠 Context
+
+I want to build a **visual timer system embedded into the UI**, not a traditional timer component.
+
+This is NOT a clock or progress bar.
+
+It is a **background-based time visualization system** where:
+
+* time is represented visually
+* the user perceives time passively
+* the main content (instructions) stays dominant
+
+This system should behave more like a **data visualization axis + animated fill**, not a widget.
+
+---
+
+## 🎯 Core Behavior
+
+### Timer
+
+* The timer has a configurable total duration (`totalTime`)
+* It counts down to 0
+* The timer itself is NOT displayed numerically in the UI
+
+### Visual Fill
+
+* A background (or side strip) represents remaining time
+* It shrinks smoothly over time
+* Default direction: **top → bottom drain**
+* The animation must be **continuous and smooth** (not ticking every second)
+
+Use:
+
+* `requestAnimationFrame` or equivalent smooth timing
+* NOT discrete 1-second jumps
+
+---
+
+## 📏 Marker System (Critical)
+
+We have two types of markers:
+
+---
+
+### 1. Major Markers (semantic)
+
+These represent meaningful time values.
+
+#### Rules:
+
+* Always include:
+
+  * `totalTime` (top)
+  * `0` (bottom)
+* Intermediate markers must use **“nice numbers”**
+
+Allowed step sizes:
+
+```text
+1, 2, 5, 10
+```
+
+#### Selection logic:
+
+* Compute rough step: `totalTime / 5`
+* Round to nearest “nice number”
+
+#### Examples:
+
+* 25 → `25, 20, 15, 10, 5, 0`
+* 13 → `13, 10, 5, 0`
+* 42 → `42, 40, 30, 20, 10, 0`
+
+⚠️ Do NOT use awkward numbers like:
+
+* 11, 9, 7, etc.
+
+Even if spacing becomes slightly uneven, numbers must remain clean.
+
+---
+
+### Positioning:
+
+Each marker is positioned proportionally:
+
+```text
+position = value / totalTime
+```
+
+---
+
+### 2. Minor Markers (visual only)
+
+These are small dashes between major markers.
+
+#### Rules:
+
+* They DO NOT represent exact time units
+* They are purely visual
+* Their count depends on **available screen space**
+
+#### Implementation:
+
+* For each gap between major markers:
+
+  * measure pixel height of the gap
+  * define a minimum spacing (e.g. 24px)
+  * calculate:
+
+```text
+minorCount = floor(gapHeight / minSpacing) - 1
+```
+
+* Clamp to reasonable limits (e.g. max 6)
+
+#### Important:
+
+* Minor markers must be visually weaker than major markers
+* Users must NOT interpret them as exact time divisions
+
+---
+
+## 🎨 Visual Hierarchy
+
+Must follow this order:
+
+1. Instruction content (strongest)
+2. Major markers + numbers
+3. Minor markers
+4. Timer fill (weakest but visible)
+
+---
+
+## 🌗 Light / Dark Mode Support
+
+The app supports automatic theme switching.
+
+### Requirements:
+
+#### DO NOT rely on background fill for readability
+
+Instead:
+
+### Content Layer
+
+* Must have a semi-transparent overlay behind it
+
+Dark mode:
+
+```css
+background: rgba(0, 0, 0, 0.35);
+color: white;
+```
+
+Light mode:
+
+```css
+background: rgba(255, 255, 255, 0.5);
+color: black;
+```
+
+Optional:
+
+```css
+backdrop-filter: blur(6px);
+```
+
+---
+
+### Marker Colors
+
+Dark mode:
+
+```css
+color: rgba(255,255,255,0.8);
+```
+
+Light mode:
+
+```css
+color: rgba(0,0,0,0.7);
+```
+
+* Major markers = stronger opacity
+* Minor markers = lower opacity
+
+---
+
+## 🎨 Timer Fill Style (Important)
+
+The fill must be **muted and non-dominant**.
+
+### Rules:
+
+* Low saturation
+* Medium-low opacity
+* Must NEVER overpower content
+
+Avoid:
+
+* neon colors
+* high brightness + high saturation
+
+---
+
+### Suggested palette:
+
+Dark mode:
+
+* muted green → amber → soft red
+
+Light mode:
+
+* pastel green → soft orange → muted red
+
+---
+
+## 🧱 Layout Structure
+
+Use layered architecture:
+
+1. Base background (theme)
+2. Timer fill layer (animated)
+3. Content overlay (for readability)
+4. Content (instructions)
+5. Marker rail (side)
+
+---
+
+## 📱 Responsiveness
+
+The system must adapt to screen height:
+
+* Major markers stay consistent
+* Minor markers increase/decrease based on space
+* No overcrowding or empty gaps
+
+---
+
+## ⚙️ Performance
+
+* Use smooth animation (`requestAnimationFrame`)
+* Avoid layout thrashing
+* Recalculate markers on:
+
+  * resize
+  * orientation change
+  * totalTime change
+
+---
+
+## 🧪 Edge Cases
+
+Handle:
+
+* very small screens → reduce minor markers
+* very short timers (<10) → use step = 1 or 2
+* very large timers → avoid too many major markers
+* ensure 0 is always included
+
+---
+
+## 🧩 Optional Enhancements (if easy)
+
+* highlight nearest major marker as fill passes it
+* subtle color shift as time approaches 0
+* allow switching between:
+
+  * full background fill
+  * right-side vertical strip
+
+---
+
+## 🚫 What to Avoid
+
+* traditional countdown clock UI
+* discrete ticking animations
+* equal division with ugly numbers
+* strong/high-contrast fill that competes with text
+* minor markers that look like exact units
+
+---
+
+## 🎯 Goal
+
+The final result should feel like:
+
+> “The page itself quietly communicates time passing”
+
+Not:
+
+> “A timer is counting down”
+
+---
+
+# ✅ End of Prompt
+
+---
+
+## My note to you (outside the prompt)
+
+This is already at a level where Claude should:
+
+* structure it correctly
+* avoid the common mistakes
+* give you something close to a production-ready component
+
+If it messes something up, it’ll most likely be:
+
+* marker spacing edge cases
+* visual hierarchy (too strong fill or ticks)
+
+Both are easy to correct in iteration 2.
