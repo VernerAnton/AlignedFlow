@@ -247,7 +247,7 @@ export default function EveningRoutine() {
   const TOP_INSET = isMobile ? 16 : PEEK_STRIP + 10;  // less top padding on mobile
   const BTN_CLEARANCE = 90;                      // space for floating controls
   const BOT_INSET = PEEK_STRIP + BTN_CLEARANCE;  // space reserved at bottom
-  const containerH = windowH - 36; // 36px tab bar at top
+  const containerH = windowH;
   const MAX_CARD_H = containerH - TOP_INSET - BOT_INSET;
   const CARD_TOP = TOP_INSET;                    // where active card starts
 

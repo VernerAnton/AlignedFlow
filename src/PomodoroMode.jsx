@@ -449,7 +449,7 @@ export default function AlignedFlow() {
       {/* Waterline glow */}
       <div style={{ position: "absolute", left: isMobile ? railW - 6 : railW - 7, right: 0, bottom: `${fillPct}%`, height: "80px", background: `linear-gradient(to top, ${phase.color}18, transparent)`, transform: "translateY(40px)", transition: "background 0.6s", pointerEvents: "none", zIndex: 1 }} />
       {/* Crisp waterline — full width, GPU-composited via transform */}
-      <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: 2, background: phase.color, opacity: 0.75, transform: `translateY(${(100 - fillPct) * (window.innerHeight - 36) / 100}px)`, transition: "background 0.6s", pointerEvents: "none", zIndex: 2 }} />
+      <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: 2, background: phase.color, opacity: 0.75, transform: `translateY(${(100 - fillPct) * window.innerHeight / 100}px)`, transition: "background 0.6s", pointerEvents: "none", zIndex: 2 }} />
 
       <TimerRail phase={phase} fillPct={fillPct} isMobile={isMobile} totalSeconds={totalDuration} timeLeft={timeLeft} />
 
