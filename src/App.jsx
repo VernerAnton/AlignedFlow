@@ -3,14 +3,14 @@ import PomodoroMode from './PomodoroMode'
 import EveningMode from './EveningMode'
 
 const slideKeyframes = `
-@keyframes slideOutLeft  { from { transform: translateX(0)     } to { transform: translateX(-100%) } }
-@keyframes slideOutRight { from { transform: translateX(0)     } to { transform: translateX(100%)  } }
-@keyframes slideInRight  { from { transform: translateX(100%)  } to { transform: translateX(0)     } }
-@keyframes slideInLeft   { from { transform: translateX(-100%) } to { transform: translateX(0)     } }
+@keyframes slideOutLeft  { from { transform: translateX(0);    opacity: 1; } to { transform: translateX(-20%); opacity: 0; } }
+@keyframes slideOutRight { from { transform: translateX(0);    opacity: 1; } to { transform: translateX(20%);  opacity: 0; } }
+@keyframes slideInRight  { from { transform: translateX(20%);  opacity: 0; } to { transform: translateX(0);    opacity: 1; } }
+@keyframes slideInLeft   { from { transform: translateX(-20%); opacity: 0; } to { transform: translateX(0);    opacity: 1; } }
 `
 
-const EASING = 'cubic-bezier(0.16, 1, 0.3, 1)'
-const DURATION = '0.5s'
+const EXIT_ANIM  = '0.3s cubic-bezier(0.4, 0, 0.6, 1) forwards'   // ease-in: decisive exit
+const ENTER_ANIM = '0.42s cubic-bezier(0.0, 0.0, 0.2, 1) forwards' // ease-out: gentle landing
 
 export default function App() {
   const [mode, setMode]         = useState('work')
@@ -29,7 +29,7 @@ export default function App() {
     setSlideDir(null)
   }
 
-  const wrapperStyle = { position: 'absolute', inset: 0 }
+  const wrapperStyle = { position: 'absolute', inset: 0, willChange: 'transform, opacity' }
 
   return (
     <div style={{ position: 'relative', height: '100vh', overflow: 'hidden', background: '#0f0e0c' }}>
@@ -40,7 +40,7 @@ export default function App() {
         <div
           style={{
             ...wrapperStyle,
-            animation: `slideOut${slideDir === 'left' ? 'Left' : 'Right'} ${DURATION} ${EASING} forwards`,
+            animation: `slideOut${slideDir === 'left' ? 'Left' : 'Right'} ${EXIT_ANIM}`,
           }}
           onAnimationEnd={onExitEnd}
         >
@@ -53,7 +53,7 @@ export default function App() {
         style={{
           ...wrapperStyle,
           animation: prevMode
-            ? `slideIn${slideDir === 'left' ? 'Right' : 'Left'} ${DURATION} ${EASING} forwards`
+            ? `slideIn${slideDir === 'left' ? 'Right' : 'Left'} ${ENTER_ANIM}`
             : 'none',
         }}
       >
