@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playDoneSound } from "./sounds";
+import { sendNotification } from "./notifications";
 
 const SECTION_COLORS = {
   Standing: { color: "#c4956a", dim: "rgba(196,149,106,0.26)", transDim: "rgba(196,149,106,0.11)" },       // amber
@@ -258,6 +260,9 @@ export default function EveningRoutine() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [td, setTd] = useState(10);
   const [showSettings, setShowSettings] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
+  const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
 
   // Bilateral sub-phase — derived from timeLeft for bilateral exercises
   // "side1" | "switching" | "side2" | null (for non-bilateral)
@@ -275,6 +280,27 @@ export default function EveningRoutine() {
   const switchSecsLeft = subPhase === "switching" && switchWindow
     ? timeLeft - switchWindow.end
     : 0;
+
+  // ── Sound effects for bilateral switch ────────────────────────────────
+  const prevSubPhaseRef = useRef(null);
+
+  // Pulse + ring tones — fire once per second tick during switching
+  useEffect(() => {
+    if (!isPlaying || phase !== "exercise" || subPhase !== "switching") return;
+    if (switchSecsLeft > SWITCH_RING_COUNT) {
+      playPulseTone(mutedRef.current);
+    } else if (switchSecsLeft > 0) {
+      playRingTone(mutedRef.current);
+    }
+  }, [timeLeft]);
+
+  // Side-2 chime — fires once when switching ends
+  useEffect(() => {
+    if (prevSubPhaseRef.current === "switching" && subPhase === "side2") {
+      playSide2Chime(mutedRef.current);
+    }
+    prevSubPhaseRef.current = subPhase;
+  }, [subPhase]);
 
   // Track the active card's bounding rect for ring positioning
   const [cardRect, setCardRect] = useState(null);
@@ -448,11 +474,14 @@ export default function EveningRoutine() {
       const next = indexRef.current + 1;
       if (next >= EXERCISES.length) {
         setIsPlaying(false); setPhase("done"); phaseRef.current = "done";
+        playDoneSound(mutedRef.current);
+        sendNotification("Evening Routine Complete", "All exercises finished. Sleep well.");
       } else {
         slide("fwd");
         setIndex(next); indexRef.current = next;
         setPhase("transition"); phaseRef.current = "transition";
         setTimeLeft(tdRef.current);
+        playExerciseCompleteSound(mutedRef.current);
       }
     } else if (phaseRef.current === "transition") {
       setPhase("exercise"); phaseRef.current = "exercise";
@@ -729,6 +758,11 @@ export default function EveningRoutine() {
               <input type="range" min={5} max={20} step={1} value={td} onChange={(e) => setTd(Number(e.target.value))} style={{ flex: 1, accentColor: COLOR }} />
               <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: "#444" }}>20s</span>
               <span style={{ fontSize: "0.7rem", fontFamily: "'DM Mono', monospace", color: COLOR, minWidth: 24 }}>{td}s</span>
+            </div>
+            <div style={{ marginTop: "0.85rem", display: "flex", justifyContent: "flex-end" }}>
+              <button onClick={toggleMuted} style={{ border: `1px solid ${muted ? "rgba(255,255,255,0.1)" : COLOR + "44"}`, background: "transparent", borderRadius: 6, padding: "0.32rem 0.7rem", cursor: "pointer", color: muted ? "rgba(255,255,255,0.25)" : COLOR, fontSize: "0.55rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em" }}>
+                {muted ? "SOUND OFF" : "SOUND ON"}
+              </button>
             </div>
           </div>
         )}

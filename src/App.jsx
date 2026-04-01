@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import PomodoroMode from './PomodoroMode'
 import EveningMode from './EveningMode'
+import { unlockAudio } from './sounds'
+import { requestNotificationPermission } from './notifications'
 
 const slideKeyframes = `
 @keyframes slideOutLeft  { from { transform: translateX(0);    opacity: 1; } to { transform: translateX(-20%); opacity: 0; } }
@@ -16,6 +18,14 @@ export default function App() {
   const [mode, setMode]         = useState('work')
   const [prevMode, setPrevMode] = useState(null)
   const [slideDir, setSlideDir] = useState(null) // 'left' | 'right'
+  const initRef = useRef(false)
+
+  const handleFirstInteraction = () => {
+    if (initRef.current) return;
+    initRef.current = true;
+    unlockAudio();
+    requestNotificationPermission();
+  };
 
   function switchMode(next) {
     if (next === mode || prevMode) return // ignore same-mode or mid-transition
@@ -32,7 +42,7 @@ export default function App() {
   const wrapperStyle = { position: 'absolute', inset: 0, willChange: 'transform, opacity' }
 
   return (
-    <div style={{ position: 'relative', height: '100vh', overflow: 'hidden', background: '#0f0e0c' }}>
+    <div onClick={handleFirstInteraction} style={{ position: 'relative', height: '100vh', overflow: 'hidden', background: '#0f0e0c' }}>
       <style dangerouslySetInnerHTML={{ __html: slideKeyframes }} />
 
       {/* Exiting component — slides out */}
