@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { playWorkSound, playShortBreakSound, playLongBreakSound } from "./sounds";
+import { sendNotification } from "./notifications";
 
 const PHASES = {
   work: {
@@ -184,7 +186,7 @@ const TimerRail = ({ phase, fillPct, isMobile, totalSeconds, timeLeft }) => {
 
 // ── Settings drawer ───────────────────────────────────────────────────────────
 
-const SettingsDrawer = ({ phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, loopsUntilLong, setLoopsUntilLong }) => {
+const SettingsDrawer = ({ phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, loopsUntilLong, setLoopsUntilLong, muted, toggleMuted }) => {
   const [open, setOpen] = useState(false);
   const drawerRef = useRef(null);
 
@@ -235,6 +237,13 @@ const SettingsDrawer = ({ phaseId, setPhaseId, phase, durations, setDurations, i
             <button onClick={onReset} style={{ ...btnBase, padding: "0.42rem 0.85rem", borderRadius: 6, color: "rgba(255,255,255,0.45)", fontSize: "0.62rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em" }}>RESET</button>
             <button onClick={onPlayPause} style={{ ...btnBase, flex: 1, padding: "0.48rem 1rem", borderRadius: 6, border: `1px solid ${phase.color}`, background: `${phase.color}28`, color: phase.color, fontSize: "0.7rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.14em", fontWeight: 500 }}>
               {isPlaying ? "PAUSE" : "START"}
+            </button>
+          </div>
+
+          {/* Sound toggle */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.75rem" }}>
+            <button onClick={toggleMuted} style={{ ...btnBase, padding: "0.32rem 0.7rem", borderRadius: 6, color: muted ? "rgba(255,255,255,0.25)" : phase.color, fontSize: "0.55rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", border: `1px solid ${muted ? "rgba(255,255,255,0.1)" : phase.color + "44"}` }}>
+              {muted ? "SOUND OFF" : "SOUND ON"}
             </button>
           </div>
 
@@ -296,6 +305,9 @@ export default function AlignedFlow() {
   const [timeLeft, setTimeLeft] = useState(25 * 60); // in seconds
   const [workCount, setWorkCount] = useState(0); // counts completed work sessions
   const [loopsUntilLong, setLoopsUntilLong] = useState(4); // work sessions before a long break
+  const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
+  const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
   const phase = PHASES[phaseId];
   const width = useWindowWidth();
   const isMobile = width < 600;
@@ -404,10 +416,19 @@ export default function AlignedFlow() {
       const nextPhase = newCount % loopsUntilLong === 0 ? "long" : "short";
       setPhaseId(nextPhase); phaseIdRef.current = nextPhase;
       setTimeLeft(durationsRef.current[nextPhase] * 60);
+      if (nextPhase === "long") {
+        playLongBreakSound(mutedRef.current);
+        sendNotification("Long Break", "Time for extended recovery");
+      } else {
+        playShortBreakSound(mutedRef.current);
+        sendNotification("Short Break", "Do the reset exercises");
+      }
     } else {
       // Break finished → back to work
       setPhaseId("work"); phaseIdRef.current = "work";
       setTimeLeft(durationsRef.current.work * 60);
+      playWorkSound(mutedRef.current);
+      sendNotification("Work Session", "Time to focus!");
     }
   }, [timeLeft, isPlaying]);
 
@@ -424,7 +445,15 @@ export default function AlignedFlow() {
     segmentToRef.current = 100;
   };
 
-  const onPlayPause = () => setIsPlaying((p) => !p);
+  const onPlayPause = () => {
+    setIsPlaying((p) => {
+      // Play work sound when starting (not resuming from pause mid-phase)
+      if (!p && phaseIdRef.current === "work") {
+        playWorkSound(mutedRef.current);
+      }
+      return !p;
+    });
+  };
 
   const onReset = () => {
     setIsPlaying(false);
@@ -465,7 +494,7 @@ export default function AlignedFlow() {
         </div>
       </div>
 
-      <SettingsDrawer phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} loopsUntilLong={loopsUntilLong} setLoopsUntilLong={setLoopsUntilLong} />
+      <SettingsDrawer phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} loopsUntilLong={loopsUntilLong} setLoopsUntilLong={setLoopsUntilLong} muted={muted} toggleMuted={toggleMuted} />
     </div>
   );
 }

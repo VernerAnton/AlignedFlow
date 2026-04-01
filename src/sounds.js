@@ -81,6 +81,46 @@ export function playDoneSound(muted) {
   playTone(ctx, 1108.73, now + 0.12, 0.30, 'sine', 0.18, 0.01, 0.25);
 }
 
+// ── Evening Mode — Bilateral Switch Sounds ──────────────────────────────
+
+// Pulse tone — soft low tick, once per second during first phase of switching
+// ~220Hz sine, 80ms, volume 0.15
+export function playPulseTone(muted) {
+  if (muted) return;
+  const ctx = getAudioContext();
+  const now = ctx.currentTime;
+  playTone(ctx, 220, now, 0.08, 'sine', 0.15, 0.01, 0.04);
+}
+
+// Ring tone — brighter tick, once per second during last SWITCH_RING_COUNT seconds
+// ~440Hz sine, 100ms, volume 0.2
+export function playRingTone(muted) {
+  if (muted) return;
+  const ctx = getAudioContext();
+  const now = ctx.currentTime;
+  playTone(ctx, 440, now, 0.10, 'sine', 0.2, 0.01, 0.05);
+}
+
+// Side-2 chime — two-note rising tone when switching ends and side 2 begins
+// 330Hz → 440Hz, 150ms each, volume 0.25
+export function playSide2Chime(muted) {
+  if (muted) return;
+  const ctx = getAudioContext();
+  const now = ctx.currentTime;
+  playTone(ctx, 330, now, 0.15, 'sine', 0.25, 0.01, 0.08);
+  playTone(ctx, 440, now + 0.16, 0.15, 'sine', 0.25, 0.01, 0.08);
+}
+
+// Exercise complete — descending triangle tone when exercise finishes → transition
+// Distinct from sine-based switch sounds; signals "get ready for next position"
+export function playExerciseCompleteSound(muted) {
+  if (muted) return;
+  const ctx = getAudioContext();
+  const now = ctx.currentTime;
+  playTone(ctx, 523.25, now, 0.20, 'triangle', 0.20, 0.02, 0.12);
+  playTone(ctx, 392.00, now + 0.22, 0.25, 'triangle', 0.18, 0.02, 0.15);
+}
+
 // Unlock audio context on first user interaction
 export function unlockAudio() {
   getAudioContext();
