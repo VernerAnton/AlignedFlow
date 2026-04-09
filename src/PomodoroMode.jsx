@@ -236,7 +236,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             <div key={p.id} style={{ marginBottom: "0.7rem" }}>
               <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>{p.tag}</div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <input type="range" min={p.id === "work" ? 15 : 1} max={p.id === "work" ? 50 : p.id === "long" ? 30 : 15} value={durations[p.id]} onChange={(e) => setDurations((d) => ({ ...d, [p.id]: Number(e.target.value) }))} disabled={isPlaying} style={{ flex: 1, accentColor: p.color }} />
+                <input type="range" min={p.id === "work" ? 15 : 1} max={p.id === "work" ? 50 : p.id === "long" ? 30 : 15} value={durations[p.id]} onChange={(e) => setDurations((d) => ({ ...d, [p.id]: Number(e.target.value) }))} disabled={isPlaying} style={{ flex: 1, accentColor: p.color, colorScheme: "dark" }} />
                 <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: p.color, minWidth: "32px" }}>{durations[p.id]}m</span>
               </div>
             </div>
@@ -246,7 +246,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
           <div style={{ marginBottom: "0.3rem" }}>
             <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>SESSIONS UNTIL LONG BREAK</div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input type="range" min={2} max={8} value={loopsUntilLong} onChange={(e) => setLoopsUntilLong(Number(e.target.value))} disabled={isPlaying} style={{ flex: 1, accentColor: phases.long.color }} />
+              <input type="range" min={2} max={8} value={loopsUntilLong} onChange={(e) => setLoopsUntilLong(Number(e.target.value))} disabled={isPlaying} style={{ flex: 1, accentColor: phases.long.color, colorScheme: "dark" }} />
               <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: phases.long.color, minWidth: "20px" }}>{loopsUntilLong}</span>
             </div>
           </div>
