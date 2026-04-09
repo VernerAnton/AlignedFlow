@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { computeSectionColors, exportConfig, validateAndParseConfig, nextId } from "./dataStore";
+import { computeSectionColors, exportConfig, validateAndParseConfig, nextId, DEFAULT_CONFIG } from "./dataStore";
 
 const FONT = "'DM Mono', monospace";
 const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#f0ece4", fontFamily: FONT, fontSize: "0.78rem", padding: "0.4rem 0.6rem", width: "100%", outline: "none" };
@@ -11,7 +11,40 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
   const [expandedCard, setExpandedCard] = useState(null);
   const [showSections, setShowSections] = useState(false);
   const [importError, setImportError] = useState(null);
+  const [showResetMenu, setShowResetMenu] = useState(false);
   const fileRef = useRef(null);
+  const resetRef = useRef(null);
+
+  useEffect(() => {
+    if (!showResetMenu) return;
+    const handler = (e) => {
+      if (resetRef.current && !resetRef.current.contains(e.target)) setShowResetMenu(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showResetMenu]);
+
+  const handleReset = (scope) => {
+    const defaults = DEFAULT_CONFIG.evening;
+    const messages = {
+      sections: "Reset all section colors & names to defaults?",
+      exercises: "Reset all exercises to defaults?",
+      settings: "Reset settings (switch-sides time, transition time) to defaults?",
+      everything: "Reset ENTIRE evening config to defaults?",
+    };
+    if (!window.confirm(messages[scope])) return;
+    setShowResetMenu(false);
+    setExpandedCard(null);
+    if (scope === "sections") {
+      setEvening(prev => ({ ...prev, sections: structuredClone(defaults.sections) }));
+    } else if (scope === "exercises") {
+      setEvening(prev => ({ ...prev, exercises: structuredClone(defaults.exercises) }));
+    } else if (scope === "settings") {
+      setEvening(prev => ({ ...prev, switchBuffer: defaults.switchBuffer, transitionTime: defaults.transitionTime, muted: defaults.muted ?? false }));
+    } else if (scope === "everything") {
+      setEvening(structuredClone(defaults));
+    }
+  };
 
   // Auto-save
   useEffect(() => {
@@ -144,6 +177,24 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
           <span style={{ fontSize: "0.65rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)" }}>Evening Builder</span>
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div ref={resetRef} style={{ position: "relative" }}>
+            <button onClick={() => setShowResetMenu(s => !s)} style={btnSmall}>RESET</button>
+            {showResetMenu && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 30, background: "rgba(15,14,12,0.97)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, padding: "0.3rem 0", minWidth: 200, backdropFilter: "blur(8px)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+                {[
+                  { scope: "sections", label: "Sections (colors & names)" },
+                  { scope: "exercises", label: "Exercises" },
+                  { scope: "settings", label: "Settings" },
+                  { scope: "everything", label: "Reset everything" },
+                ].map(opt => (
+                  <button key={opt.scope} onClick={() => handleReset(opt.scope)} style={{ display: "block", width: "100%", textAlign: "left", padding: "0.45rem 0.75rem", border: "none", background: "transparent", cursor: "pointer", fontFamily: FONT, fontSize: "0.62rem", letterSpacing: "0.06em", color: opt.scope === "everything" ? "#c85050" : "rgba(255,255,255,0.6)" }}
+                    onMouseEnter={e => e.target.style.background = "rgba(255,255,255,0.06)"}
+                    onMouseLeave={e => e.target.style.background = "transparent"}
+                  >{opt.label}</button>
+                ))}
+              </div>
+            )}
+          </div>
           <button onClick={() => exportConfig(config)} style={btnSmall}>EXPORT</button>
           <button onClick={() => fileRef.current?.click()} style={btnSmall}>IMPORT</button>
         </div>
