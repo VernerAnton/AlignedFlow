@@ -1,6 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import PomodoroMode from './PomodoroMode'
 import EveningMode from './EveningMode'
+import EveningBuilder from './EveningBuilder'
+import PomodoroBuilder from './PomodoroBuilder'
+import { loadConfig, saveConfig } from './dataStore'
 import { unlockAudio } from './sounds'
 import { requestNotificationPermission } from './notifications'
 
@@ -18,7 +21,10 @@ export default function App() {
   const [mode, setMode]         = useState('work')
   const [prevMode, setPrevMode] = useState(null)
   const [slideDir, setSlideDir] = useState(null) // 'left' | 'right'
+  const [config, setConfig]     = useState(() => loadConfig())
   const initRef = useRef(false)
+
+  useEffect(() => { saveConfig(config) }, [config])
 
   const handleFirstInteraction = () => {
     if (initRef.current) return;
@@ -29,10 +35,17 @@ export default function App() {
 
   function switchMode(next) {
     if (next === mode || prevMode) return // ignore same-mode or mid-transition
+    const isBuilderTransition = next.startsWith('builder-') || mode.startsWith('builder-')
+    if (isBuilderTransition) {
+      setMode(next) // instant, no slide animation
+      return
+    }
     setSlideDir(next === 'evening' ? 'left' : 'right')
     setPrevMode(mode)
     setMode(next)
   }
+
+  const isBuilder = mode.startsWith('builder-')
 
   function onExitEnd() {
     setPrevMode(null)
@@ -54,7 +67,7 @@ export default function App() {
           }}
           onAnimationEnd={onExitEnd}
         >
-          {prevMode === 'work' ? <PomodoroMode /> : <EveningMode />}
+          {prevMode === 'work' ? <PomodoroMode config={config.pomodoro} /> : <EveningMode config={config.evening} />}
         </div>
       )}
 
@@ -67,46 +80,57 @@ export default function App() {
             : 'none',
         }}
       >
-        {mode === 'work' ? <PomodoroMode /> : <EveningMode />}
+        {mode === 'work' && <PomodoroMode config={config.pomodoro} />}
+        {mode === 'evening' && <EveningMode config={config.evening} />}
+        {mode === 'builder-work' && <PomodoroBuilder config={config} setConfig={setConfig} onBack={() => switchMode('work')} />}
+        {mode === 'builder-evening' && <EveningBuilder config={config} setConfig={setConfig} onBack={() => switchMode('evening')} />}
       </div>
 
-      {/* Floating mode switcher pill — fixed, above both modes (max z-index ~30) */}
-      <div style={{
-        position: 'fixed',
-        top: '0.85rem',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        display: 'flex',
-        zIndex: 50,
-        background: 'rgba(15,14,12,0.88)',
-        backdropFilter: 'blur(8px)',
-        border: '1px solid rgba(255,255,255,0.18)',
-        borderRadius: 6,
-        overflow: 'hidden',
-      }}>
-        {[
-          { id: 'work',    label: 'WORK'    },
-          { id: 'evening', label: 'EVENING' },
-        ].map(({ id, label }) => (
-          <button
-            key={id}
-            onClick={() => switchMode(id)}
-            style={{
-              padding: '0.42rem 0.95rem',
-              border: 'none',
-              background: 'transparent',
-              cursor: id === mode ? 'default' : 'pointer',
-              fontFamily: "'DM Mono', monospace",
-              fontSize: '0.6rem',
-              letterSpacing: '0.14em',
-              color: id === mode ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.22)',
-              transition: 'color 0.25s',
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Floating mode switcher pill — fixed, above both modes (hidden in builder) */}
+      {!isBuilder && (
+        <div style={{
+          position: 'fixed',
+          top: '0.85rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          zIndex: 50,
+          background: 'rgba(15,14,12,0.88)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.18)',
+          borderRadius: 6,
+          overflow: 'hidden',
+        }}>
+          {[
+            { id: 'work',    label: 'WORK'    },
+            { id: 'evening', label: 'EVENING' },
+            { id: 'edit',    label: 'EDIT'    },
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => {
+                if (id === 'edit') switchMode(mode === 'evening' ? 'builder-evening' : 'builder-work')
+                else switchMode(id)
+              }}
+              style={{
+                padding: '0.42rem 0.95rem',
+                border: 'none',
+                background: 'transparent',
+                cursor: id === mode ? 'default' : 'pointer',
+                fontFamily: "'DM Mono', monospace",
+                fontSize: '0.6rem',
+                letterSpacing: '0.14em',
+                color: id === 'edit' ? 'rgba(255,255,255,0.35)'
+                  : id === mode ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.22)',
+                borderLeft: id === 'edit' ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                transition: 'color 0.25s',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,90 +1,21 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playDoneSound } from "./sounds";
 import { sendNotification } from "./notifications";
+import { computeSectionColors } from "./dataStore";
 
-const SECTION_COLORS = {
-  Standing: { color: "#c4956a", dim: "rgba(196,149,106,0.26)", transDim: "rgba(196,149,106,0.11)" },       // amber
-  Floor:    { color: "#b8785a", dim: "rgba(184,120,90,0.26)",  transDim: "rgba(184,120,90,0.11)" },        // copper
-  Seated:   { color: "#b06878", dim: "rgba(176,104,120,0.26)", transDim: "rgba(176,104,120,0.11)" },       // rose
-  Lying:    { color: "#8e6a99", dim: "rgba(142,106,153,0.26)", transDim: "rgba(142,106,153,0.11)" },       // dusty plum
-};
-
-function getColors(section) {
-  return SECTION_COLORS[section] || SECTION_COLORS.Standing;
-}
-
-// ── Switch buffer config ─────────────────────────────────────────────────
-// Total seconds for the bilateral switch pause. The first (SWITCH_BUFFER - SWITCH_RING_COUNT)
-// seconds are a calm pulse on the card. The last SWITCH_RING_COUNT seconds show
-// concentric rings that dissolve outward one per second.
-const SWITCH_BUFFER = 8;
 const SWITCH_RING_COUNT = 5;
 
-// ── Sound-effect hooks (wire up in production) ───────────────────────────
-// Three distinct audio cues during a bilateral switch:
-//
-// 1. PULSE TONE — plays once per second during the first phase of switching
-//    (seconds SWITCH_BUFFER down to SWITCH_RING_COUNT+1). Soft, low, rhythmic.
-//    Think a muted "tok" or gentle sine ping around 220Hz, ~80ms, volume 0.15.
-//    Trigger: inside the switching effect when subPhase==="switching" && switchSecsLeft > SWITCH_RING_COUNT
-//
-// 2. RING TONE — plays once per second during the last SWITCH_RING_COUNT seconds
-//    (each time a ring dissolves). Slightly higher pitch, brighter. Maybe 440Hz
-//    sine, ~100ms, volume 0.2. Each ring dissolving = one tone.
-//    Trigger: inside the switching effect when subPhase==="switching" && switchSecsLeft <= SWITCH_RING_COUNT && switchSecsLeft > 0
-//
-// 3. SIDE-2 CHIME — single chime when switching ends and side 2 begins.
-//    A clean two-note rising tone (330Hz → 440Hz, 150ms each, volume 0.25).
-//    Trigger: when subPhase transitions from "switching" to "side2"
-
-const EXERCISES = [
-  { id: 1, section: "Standing", title: "Reverse Prayer / Pyramid", timing: "60 sec per side", duration: 120, bilateral: true,
-    steps: ["Hands clasped behind back — palms together, fingers pointing up", "For pyramid: one foot forward, hinge at the hip into the fold", "Strong stretch across the front of the chest and shoulders", "Move into pyramid when reverse prayer alone stops feeling sufficient"] },
-  { id: 2, section: "Standing", title: "Uttanasana with Shoulder Bind", timing: "90 sec", duration: 90,
-    steps: ["Standing forward fold, hands clasped behind the back", "Let arms fall overhead as you fold — gravity opens the shoulders", "Knees can have a slight bend", "Head heavy, neck fully released"] },
-  { id: 3, section: "Standing", title: "Forward Fold — Bent Knee", timing: "60 sec per side", duration: 120, bilateral: true,
-    steps: ["One knee bent, other leg straight — targets calf and posterior chain", "Fold as deep as comfortable, let gravity do the work", "Progression: Half Hanuman when this stops feeling effective"] },
-  { id: 4, section: "Floor", title: "Thoracic Rotation — Quadruped", timing: "90 sec (8 slow reps per side)", duration: 90, bilateral: true,
-    steps: ["Hands and knees, one hand behind the head", "Rotate elbow toward the ceiling, then toward the opposite knee", "Opens mid-thoracic spine — creates space for the shoulder work that follows", "Move slowly, pause at end range"] },
-  { id: 5, section: "Floor", title: "Camel–Child Flow", timing: "3 min (6 rounds)", duration: 180,
-    steps: ["From kneeling, rise into camel — hands on lower back or reaching for heels", "Open the chest, let the head follow naturally — do not force neck extension", "Hold camel 20–30 sec, then fold back into child's pose", "Rest until ready, then rise back into camel", "Rhythmic, not rushed — let the spine decompress between positions"] },
-  { id: 6, section: "Floor", title: "Belly Shoulder & Chest Stretch", timing: "120 sec per side", duration: 240, bilateral: true,
-    steps: ["Lie on stomach, one arm straight out to the side (~90°), palm down", "Slowly roll the chest away from that arm", "Let gravity load the shoulder — no forcing", "Feel: front of shoulder, chest, armpit area", "A line of sensation down the arm is acceptable"] },
-  { id: 7, section: "Floor", title: "Side-Lying Chest Opener", timing: "90 sec per side", duration: 180, bilateral: true,
-    steps: ["Lie on side, bottom arm straight out in front, palm down", "Knees slightly bent for stability", "Slowly rotate chest open toward the ceiling", "Bottom shoulder stays heavy, arm stays down", "Rotate chest away from the arm — don't force the arm down"] },
-  { id: 8, section: "Floor", title: "Lizard Pose", timing: "90 sec per side", duration: 180, bilateral: true,
-    steps: ["Low lunge with front foot outside the hand", "Sink hips toward the floor, let hip flexor open passively", "Stay on hands or drop to forearms for a deeper hold", "Progression: Reclined Hero when lizard stops feeling sufficient"] },
-  { id: 9, section: "Floor", title: "Pigeon Pose", timing: "120 sec per side", duration: 240, bilateral: true,
-    steps: ["Front shin across the mat, back leg extended", "Fold forward as far as comfortable — chest toward the floor", "Completely passive hold, let gravity do the work", "No effort here — this is full release"] },
-  { id: 10, section: "Seated", title: "Eagle Arms", timing: "60 sec per side", duration: 120, bilateral: true,
-    steps: ["Seated, arms crossed at elbows, wrap forearms and bring palms together", "Lift elbows slightly — stretch across upper back and posterior shoulder", "Right side priority — right shoulder protracts more from mouse use"] },
-  { id: 11, section: "Seated", title: "Gomukhasana Arms", timing: "60 sec per side", duration: 120, bilateral: true,
-    steps: ["One arm reaching down the back, other arm reaching up and clasping", "Use a strap or towel if hands don't meet", "Right arm down first — targets front of right shoulder specifically", "Strong stretch, hold steady and breathe into it"] },
-  { id: 12, section: "Seated", title: "Seated Spinal Twist", timing: "60 sec per side", duration: 120, bilateral: true,
-    steps: ["One leg extended, other foot planted outside the opposite knee", "Twist toward the bent knee, use arm as lever against the knee", "Long spine throughout — do not collapse into the twist", "Breathe into rotation, deepen slightly on each exhale"] },
-  { id: 13, section: "Seated", title: "Padmasana Forward Fold", timing: "2 min", duration: 120,
-    steps: ["Seated cross-legged or full lotus if comfortable", "Hands behind the neck, curl upper body forward, elbows toward the floor", "Completely calm — this is the transition into the passive section"] },
-  { id: 14, section: "Seated", title: "Massage Gun", timing: "7 min", duration: 420,
-    steps: ["Neck and upper traps: medium pressure, keep moving, focus on hard areas", "Shoulder front (where chest meets shoulder) — right side priority, do both", "Shoulder back: behind the joint, not on the spine", "Right: 60–90s front + 60–90s back · Left: 30–45s front + 30–45s back", "Slow glides, calm breathing, no digging"] },
-  { id: 15, section: "Lying", title: "Foam Roller — Thoracic Extension", timing: "2 min", duration: 120,
-    steps: ["Place roller across the upper back", "Lie back with arms crossed or overhead", "Small extensions over the roller", "Move up and down to hit different thoracic segments", "Do not roll the lower back or neck"] },
-  { id: 16, section: "Lying", title: "Peanut Ball — Skull Base", timing: "5 min", duration: 300,
-    steps: ["Lie on back, peanut ball where skull meets neck", "Small nods and gentle turns", "Pause on tight spots and breathe", "Fully passive — let the weight of your head do the work"] },
-];
-
-// Effective duration includes switch buffer for bilateral exercises
-function getEffectiveDuration(ex) {
-  return ex.bilateral ? ex.duration + SWITCH_BUFFER : ex.duration;
+function getEffectiveDuration(ex, switchBuffer) {
+  return ex.bilateral ? ex.duration + switchBuffer : ex.duration;
 }
 
-// For bilateral exercises, compute the switch window boundaries
-function getSwitchWindow(ex) {
+function getSwitchWindow(ex, switchBuffer) {
   if (!ex.bilateral) return null;
-  const eff = getEffectiveDuration(ex);
+  const eff = getEffectiveDuration(ex, switchBuffer);
   const midpoint = Math.floor(eff / 2);
   return {
-    start: midpoint + Math.floor(SWITCH_BUFFER / 2), // switching begins when timeLeft hits this
-    end: midpoint - Math.ceil(SWITCH_BUFFER / 2),     // switching ends when timeLeft hits this
+    start: midpoint + Math.floor(switchBuffer / 2),
+    end: midpoint - Math.ceil(switchBuffer / 2),
   };
 }
 
@@ -202,7 +133,7 @@ function SwitchRings({ switchSecsLeft, color, cardRect, isMobile, railW }) {
   );
 }
 
-function ExerciseCard({ ex, color, sideLabel }) {
+function ExerciseCard({ ex, color, sideLabel, totalCount }) {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "1.4rem 1.4rem 1.1rem", overflow: "hidden" }}>
       <div style={{ flexShrink: 0, marginBottom: "0.85rem" }}>
@@ -219,7 +150,7 @@ function ExerciseCard({ ex, color, sideLabel }) {
                 {sideLabel}
               </span>
             )}
-            <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.2)", letterSpacing: "0.06em" }}>{String(ex.id).padStart(2, "0")} / {String(EXERCISES.length).padStart(2, "0")}</span>
+            <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.2)", letterSpacing: "0.06em" }}>{String(ex.id).padStart(2, "0")} / {String(totalCount).padStart(2, "0")}</span>
           </div>
         </div>
         <div style={{ fontSize: "1.1rem", color: "#f0ece4", fontFamily: "Georgia, serif", lineHeight: 1.25, marginBottom: "0.35rem" }}>{ex.title}</div>
@@ -240,7 +171,17 @@ function ExerciseCard({ ex, color, sideLabel }) {
 
 // ── Root ────────────────────────────────────────────────────────────────────
 
-export default function EveningRoutine() {
+export default function EveningRoutine({ config }) {
+  const exercises = config.exercises;
+  const switchBuffer = config.switchBuffer;
+
+  const sectionColorMap = useMemo(() => {
+    const map = {};
+    config.sections.forEach(s => { map[s.name] = computeSectionColors(s.color); });
+    return map;
+  }, [config.sections]);
+  const getColors = (section) => sectionColorMap[section] || computeSectionColors("#c4956a");
+
   const { w: windowW, h: windowH } = useWindowSize();
   const isMobile = windowW < 600;
   const railW = isMobile ? 44 : 52;
@@ -256,9 +197,9 @@ export default function EveningRoutine() {
   // Session state
   const [index, setIndex] = useState(0);
   const [phase, setPhase] = useState("idle"); // idle | exercise | transition | done
-  const [timeLeft, setTimeLeft] = useState(getEffectiveDuration(EXERCISES[0]));
+  const [timeLeft, setTimeLeft] = useState(getEffectiveDuration(exercises[0], switchBuffer));
   const [isPlaying, setIsPlaying] = useState(false);
-  const [td, setTd] = useState(10);
+  const [td, setTd] = useState(config.transitionTime);
   const [showSettings, setShowSettings] = useState(false);
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
@@ -266,8 +207,8 @@ export default function EveningRoutine() {
 
   // Bilateral sub-phase — derived from timeLeft for bilateral exercises
   // "side1" | "switching" | "side2" | null (for non-bilateral)
-  const curEx = EXERCISES[index];
-  const switchWindow = getSwitchWindow(curEx);
+  const curEx = exercises[index];
+  const switchWindow = getSwitchWindow(curEx, switchBuffer);
   const subPhase = (() => {
     if (!curEx.bilateral || phase !== "exercise") return null;
     if (!switchWindow) return null;
@@ -407,7 +348,7 @@ export default function EveningRoutine() {
   // When timeLeft changes (new second tick), set up the next interpolation segment
   useEffect(() => {
     if (resetAnimatingRef.current) return;
-    const dur = phaseRef.current === "transition" ? tdRef.current : getEffectiveDuration(EXERCISES[indexRef.current]);
+    const dur = phaseRef.current === "transition" ? tdRef.current : getEffectiveDuration(exercises[indexRef.current], switchBuffer);
     const currentFill = computeFill(timeLeft, phaseRef.current, dur);
     const nextFill = computeFill(Math.max(0, timeLeft - 1), phaseRef.current, dur);
 
@@ -433,7 +374,7 @@ export default function EveningRoutine() {
       segmentFromRef.current = smoothFillPct;
       segmentToRef.current = smoothFillPct;
     } else {
-      const dur = phaseRef.current === "transition" ? tdRef.current : getEffectiveDuration(EXERCISES[indexRef.current]);
+      const dur = phaseRef.current === "transition" ? tdRef.current : getEffectiveDuration(exercises[indexRef.current], switchBuffer);
       const nextFill = computeFill(Math.max(0, timeLeft - 1), phaseRef.current, dur);
       segmentDurationRef.current = 1000;
       segmentStartRef.current = performance.now();
@@ -472,7 +413,7 @@ export default function EveningRoutine() {
     if (timeLeft !== 0 || !isPlaying || phaseRef.current === "idle" || phaseRef.current === "done") return;
     if (phaseRef.current === "exercise") {
       const next = indexRef.current + 1;
-      if (next >= EXERCISES.length) {
+      if (next >= exercises.length) {
         setIsPlaying(false); setPhase("done"); phaseRef.current = "done";
         playDoneSound(mutedRef.current);
         sendNotification("Evening Routine Complete", "All exercises finished. Sleep well.");
@@ -485,7 +426,7 @@ export default function EveningRoutine() {
       }
     } else if (phaseRef.current === "transition") {
       setPhase("exercise"); phaseRef.current = "exercise";
-      setTimeLeft(getEffectiveDuration(EXERCISES[indexRef.current]));
+      setTimeLeft(getEffectiveDuration(exercises[indexRef.current], switchBuffer));
     }
   }, [timeLeft, isPlaying]);
 
@@ -493,7 +434,7 @@ export default function EveningRoutine() {
     if (phase === "done") return;
     if (!isPlaying && phase === "idle") {
       setPhase("exercise"); phaseRef.current = "exercise";
-      setTimeLeft(getEffectiveDuration(EXERCISES[index]));
+      setTimeLeft(getEffectiveDuration(exercises[index], switchBuffer));
     }
     setIsPlaying((p) => !p);
   };
@@ -504,7 +445,7 @@ export default function EveningRoutine() {
 
     // If already at first card, just reset timer
     if (indexRef.current === 0) {
-      setTimeLeft(getEffectiveDuration(EXERCISES[0]));
+      setTimeLeft(getEffectiveDuration(exercises[0], switchBuffer));
       resetAnimatingRef.current = true;
       segmentDurationRef.current = 600;
       segmentStartRef.current = performance.now();
@@ -536,7 +477,7 @@ export default function EveningRoutine() {
         rewindIntervalRef.current = null;
         rewindingRef.current = false;
         transitionSpeedRef.current = 900; // restore default
-        setTimeLeft(getEffectiveDuration(EXERCISES[0]));
+        setTimeLeft(getEffectiveDuration(exercises[0], switchBuffer));
         return;
       }
       const p = indexRef.current - 1;
@@ -552,12 +493,12 @@ export default function EveningRoutine() {
   };
 
   const onNext = () => {
-    if (index >= EXERCISES.length - 1 || isAnimRef.current || rewindingRef.current) return;
+    if (index >= exercises.length - 1 || isAnimRef.current || rewindingRef.current) return;
     const n = index + 1;
     slide("fwd"); setIndex(n); indexRef.current = n;
     if (isPlaying) { setPhase("exercise"); phaseRef.current = "exercise"; }
     else setPhase("idle");
-    setTimeLeft(getEffectiveDuration(EXERCISES[n]));
+    setTimeLeft(getEffectiveDuration(exercises[n], switchBuffer));
   };
 
   const onPrev = () => {
@@ -566,16 +507,16 @@ export default function EveningRoutine() {
     slide("bwd"); setIndex(p); indexRef.current = p;
     if (isPlaying) { setPhase("exercise"); phaseRef.current = "exercise"; }
     else setPhase("idle");
-    setTimeLeft(getEffectiveDuration(EXERCISES[p]));
+    setTimeLeft(getEffectiveDuration(exercises[p], switchBuffer));
   };
 
-  const totalDuration = phase === "transition" ? td : getEffectiveDuration(EXERCISES[index]);
+  const totalDuration = phase === "transition" ? td : getEffectiveDuration(exercises[index], switchBuffer);
   // smoothFillPct is used for the waterline — continuous 60fps interpolation
   // Integer fillPct still needed for rail (which should snap to seconds)
   const fillPct = smoothFillPct;
 
   // Section-based colors
-  const sectionColors = getColors(EXERCISES[index].section);
+  const sectionColors = getColors(exercises[index].section);
   const COLOR = sectionColors.color;
   const bgColor = phase === "transition" ? sectionColors.transDim : sectionColors.dim;
 
@@ -621,7 +562,7 @@ export default function EveningRoutine() {
         {/* Cards */}
         {[-1, 0, 1, 2].map((rel) => {
           const ci = index + rel;
-          if (ci < 0 || ci >= EXERCISES.length) return null;
+          if (ci < 0 || ci >= exercises.length) return null;
           const isCurrent = rel === 0;
 
           // Effective position includes animation offset
@@ -705,9 +646,10 @@ export default function EveningRoutine() {
                 filter: isSwitching ? "blur(1px)" : "none",
               }}>
                 <ExerciseCard
-                  ex={EXERCISES[ci]}
-                  color={getColors(EXERCISES[ci].section).color}
-                  sideLabel={isCurrent && EXERCISES[ci].bilateral && phase === "exercise"
+                  ex={exercises[ci]}
+                  color={getColors(exercises[ci].section).color}
+                  totalCount={exercises.length}
+                  sideLabel={isCurrent && exercises[ci].bilateral && phase === "exercise"
                     ? (subPhase === "side1" ? "Side 1" : subPhase === "side2" ? "Side 2" : null)
                     : null
                   }
@@ -779,7 +721,7 @@ export default function EveningRoutine() {
         </button>
 
         {/* → next */}
-        <button onClick={onNext} disabled={index >= EXERCISES.length - 1} style={{ ...btnBase, width: 38, height: 38, borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", color: index >= EXERCISES.length - 1 ? "#2a2a2a" : "rgba(255,255,255,0.55)", fontSize: "1.1rem", cursor: index >= EXERCISES.length - 1 ? "default" : "pointer" }}>›</button>
+        <button onClick={onNext} disabled={index >= exercises.length - 1} style={{ ...btnBase, width: 38, height: 38, borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", color: index >= exercises.length - 1 ? "#2a2a2a" : "rgba(255,255,255,0.55)", fontSize: "1.1rem", cursor: index >= exercises.length - 1 ? "default" : "pointer" }}>›</button>
 
         {/* Settings */}
         <button onClick={() => setShowSettings((s) => !s)} style={{ ...btnBase, width: 38, height: 38, borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", border: `1px solid ${showSettings ? COLOR : "rgba(255,255,255,0.15)"}`, color: showSettings ? COLOR : "rgba(255,255,255,0.35)", fontSize: "0.85rem" }}>⚙</button>
