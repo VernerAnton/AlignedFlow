@@ -8,19 +8,16 @@ import { unlockAudio } from './sounds'
 import { requestNotificationPermission } from './notifications'
 
 const slideKeyframes = `
-@keyframes slideOutLeft  { from { transform: translateX(0);    opacity: 1; } to { transform: translateX(-20%); opacity: 0; } }
-@keyframes slideOutRight { from { transform: translateX(0);    opacity: 1; } to { transform: translateX(20%);  opacity: 0; } }
-@keyframes slideInRight  { from { transform: translateX(20%);  opacity: 0; } to { transform: translateX(0);    opacity: 1; } }
-@keyframes slideInLeft   { from { transform: translateX(-20%); opacity: 0; } to { transform: translateX(0);    opacity: 1; } }
+@keyframes fadeOut   { from { opacity: 1; } to { opacity: 0; } }
+@keyframes fadeIn    { from { opacity: 0; } to { opacity: 1; } }
 `
 
-const EXIT_ANIM  = '0.3s cubic-bezier(0.4, 0, 0.6, 1) forwards'   // ease-in: decisive exit
-const ENTER_ANIM = '0.42s cubic-bezier(0.0, 0.0, 0.2, 1) forwards' // ease-out: gentle landing
+const EXIT_ANIM  = '0.35s cubic-bezier(0.4, 0, 0.6, 1) forwards'
+const ENTER_ANIM = '0.45s cubic-bezier(0.0, 0.0, 0.2, 1) 0.15s forwards' // slight delay so exit leads
 
 export default function App() {
   const [mode, setMode]         = useState('work')
   const [prevMode, setPrevMode] = useState(null)
-  const [slideDir, setSlideDir] = useState(null) // 'left' | 'right'
   const [config, setConfig]     = useState(() => loadConfig())
   const initRef = useRef(false)
 
@@ -40,7 +37,6 @@ export default function App() {
       setMode(next) // instant, no slide animation
       return
     }
-    setSlideDir(next === 'evening' ? 'left' : 'right')
     setPrevMode(mode)
     setMode(next)
   }
@@ -49,7 +45,6 @@ export default function App() {
 
   function onExitEnd() {
     setPrevMode(null)
-    setSlideDir(null)
   }
 
   const wrapperStyle = { position: 'absolute', inset: 0, willChange: 'transform, opacity' }
@@ -58,12 +53,12 @@ export default function App() {
     <div onClick={handleFirstInteraction} style={{ position: 'relative', height: '100vh', overflow: 'hidden', background: '#0f0e0c' }}>
       <style dangerouslySetInnerHTML={{ __html: slideKeyframes }} />
 
-      {/* Exiting component — slides out */}
+      {/* Exiting component — fades out */}
       {prevMode && (
         <div
           style={{
             ...wrapperStyle,
-            animation: `slideOut${slideDir === 'left' ? 'Left' : 'Right'} ${EXIT_ANIM}`,
+            animation: `fadeOut ${EXIT_ANIM}`,
           }}
           onAnimationEnd={onExitEnd}
         >
@@ -71,12 +66,13 @@ export default function App() {
         </div>
       )}
 
-      {/* Active component — slides in from opposite side, then stays put */}
+      {/* Active component — fades in */}
       <div
         style={{
           ...wrapperStyle,
+          opacity: prevMode ? 0 : 1,
           animation: prevMode
-            ? `slideIn${slideDir === 'left' ? 'Right' : 'Left'} ${ENTER_ANIM}`
+            ? `fadeIn ${ENTER_ANIM}`
             : 'none',
         }}
       >
@@ -91,8 +87,9 @@ export default function App() {
         <div style={{
           position: 'fixed',
           top: '0.85rem',
-          left: 'calc(50% + 23px)',
+          left: `calc(50% + ${mode === 'evening' ? -23 : 23}px)`,
           transform: 'translateX(-50%)',
+          transition: 'left 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
           display: 'flex',
           zIndex: 50,
           background: 'rgba(15,14,12,0.88)',
