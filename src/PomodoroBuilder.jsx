@@ -18,7 +18,40 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
   const [tab, setTab] = useState("work");
   const [expandedItem, setExpandedItem] = useState(null);
   const [importError, setImportError] = useState(null);
+  const [showResetMenu, setShowResetMenu] = useState(false);
   const fileRef = useRef(null);
+  const resetRef = useRef(null);
+
+  useEffect(() => {
+    if (!showResetMenu) return;
+    const handler = (e) => {
+      if (resetRef.current && !resetRef.current.contains(e.target)) setShowResetMenu(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showResetMenu]);
+
+  const handleReset = (scope) => {
+    const defaults = DEFAULT_CONFIG.pomodoro;
+    const messages = {
+      phases: "Reset phase colors & names to defaults?",
+      workItems: "Reset work checklist to defaults?",
+      shortBreakExercises: "Reset short break exercises to defaults?",
+      longBreakExercises: "Reset long break exercises to defaults?",
+      settings: "Reset timer durations, loops, and muted to defaults?",
+      everything: "Reset ENTIRE pomodoro config to defaults?",
+    };
+    if (!window.confirm(messages[scope])) return;
+    setShowResetMenu(false);
+    setExpandedItem(null);
+    if (scope === "everything") {
+      setPomo(structuredClone(defaults));
+    } else if (scope === "settings") {
+      setPomo(prev => ({ ...prev, durations: structuredClone(defaults.durations), loopsUntilLong: defaults.loopsUntilLong, muted: defaults.muted ?? false }));
+    } else {
+      setPomo(prev => ({ ...prev, [scope]: structuredClone(defaults[scope]) }));
+    }
+  };
 
   // Auto-save
   useEffect(() => {
@@ -67,6 +100,26 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
           <span style={{ fontSize: "0.65rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)" }}>Work Builder</span>
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div ref={resetRef} style={{ position: "relative" }}>
+            <button onClick={() => setShowResetMenu(s => !s)} style={btnSmall}>RESET</button>
+            {showResetMenu && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 30, background: "rgba(15,14,12,0.97)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, padding: "0.3rem 0", minWidth: 210, backdropFilter: "blur(8px)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+                {[
+                  { scope: "phases", label: "Phase appearance" },
+                  { scope: "workItems", label: "Work checklist" },
+                  { scope: "shortBreakExercises", label: "Short break exercises" },
+                  { scope: "longBreakExercises", label: "Long break exercises" },
+                  { scope: "settings", label: "Timer settings" },
+                  { scope: "everything", label: "Reset everything" },
+                ].map(opt => (
+                  <button key={opt.scope} onClick={() => handleReset(opt.scope)} style={{ display: "block", width: "100%", textAlign: "left", padding: "0.45rem 0.75rem", border: "none", background: "transparent", cursor: "pointer", fontFamily: FONT, fontSize: "0.62rem", letterSpacing: "0.06em", color: opt.scope === "everything" ? "#c85050" : "rgba(255,255,255,0.6)" }}
+                    onMouseEnter={e => e.target.style.background = "rgba(255,255,255,0.06)"}
+                    onMouseLeave={e => e.target.style.background = "transparent"}
+                  >{opt.label}</button>
+                ))}
+              </div>
+            )}
+          </div>
           <button onClick={() => exportConfig(config)} style={btnSmall}>EXPORT</button>
           <button onClick={() => fileRef.current?.click()} style={btnSmall}>IMPORT</button>
         </div>
