@@ -41,15 +41,7 @@ function useWindowWidth() {
 
 // ── Content panels ──────────────────────────────────────────────────────────
 
-const WorkContent = ({ phase }) => {
-  const items = [
-    { id: "a", primary: "Collarbones wide, shoulders heavy", note: "the single cue that triggers everything else" },
-    { id: "b", primary: "Monitor: top edge at / below eye level, arm's length away" },
-    { id: "c", primary: "Keyboard & mouse: elbows under shoulders, not reaching forward" },
-    { id: "d", primary: "Forearms: roughly half resting on desk", note: "highest-leverage adjustment" },
-    { id: "e", primary: "Neutral neck: double chin, then release 20–30%" },
-    { id: "f", primary: "Phone: at eye level for anything over 30 seconds" },
-  ];
+const WorkContent = ({ phase, items }) => {
   return (
     <div>
       <div style={{ marginBottom: "1.25rem" }}>
@@ -86,13 +78,8 @@ const StepList = ({ steps, phase }) => steps.map((step, i) => (
   </div>
 ));
 
-const ShortBreakContent = ({ phase }) => {
+const ShortBreakContent = ({ phase, exercises }) => {
   const [active, setActive] = useState(0);
-  const exercises = [
-    { label: "Reset A", title: "Shoulder sequence", time: "20 sec", steps: ["Shrug both shoulders up to ears", "Roll them back — squeeze shoulder blades together", "Drop them down completely, let them fall heavy", "Repeat once more", "Widen collarbones, settle 10–20% back", "3 slow belly breaths"] },
-    { label: "Reset B", title: "Neck de-bracing", time: "15 sec", steps: ["Sit tall, chin level", "Glide head straight back — subtle double chin, face stays level", "5 small nods from that retracted position", "Hold the last one 5 seconds, then release fully"] },
-    { label: "Stretch", title: "Levator scapulae — right priority", time: "20 sec", steps: ["Sit tall, actively drop right shoulder down and back", "Tilt head left and slightly forward — 45° between left and down", "Feel stretch from right shoulder-neck junction upward", "Right side: 20 sec · Left side: 12 sec", "Release, reset before returning to work"] },
-  ];
   const ex = exercises[active];
   return (
     <div>
@@ -110,12 +97,8 @@ const ShortBreakContent = ({ phase }) => {
   );
 };
 
-const LongBreakContent = ({ phase }) => {
+const LongBreakContent = ({ phase, exercises }) => {
   const [active, setActive] = useState(0);
-  const exercises = [
-    { label: "DCF", title: "DCF Wall Protocol", subtitle: "Deep Cervical Flexor — primary rehab exercise", time: "5 min · 10 reps", steps: ["Stand or sit with back of skull touching the wall", "Chin level — not lifted, not tucked", "Gently nod chin toward throat — double chin movement. Skull stays on wall.", "Hold 10 seconds. Sternocleidomastoid must stay soft.", "Release fully. Rest 5 seconds.", "Repeat for 10 reps."], note: "If the rope-like muscle on the side of your neck activates, the movement is too large. Reduce it." },
-    { label: "Pec minor", title: "Pec Minor Doorframe Stretch", subtitle: "The structural intervention — do not skip this", time: "90 sec", steps: ["Stand in doorframe — forearms on frame at shoulder height, elbows at 90°", "Step one foot through the doorway, gently lean forward", "Feel stretch across chest — not in shoulder joint", "Hold 30 sec, breathing slowly", "Raise arms to Y-shape (~135°) — 30 sec", "Return to 90° for final 30 sec"], note: "No doorframe: corner of a room with both hands on walls, same movement." },
-  ];
   const ex = exercises[active];
   return (
     <div>
@@ -298,7 +281,7 @@ const SettingsDrawer = ({ phaseId, setPhaseId, phase, durations, setDurations, i
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export default function AlignedFlow() {
+export default function AlignedFlow({ config }) {
   const [phaseId, setPhaseId] = useState("work");
   const [durations, setDurations] = useState({ work: 25, short: 5, long: 15 });
   const [isPlaying, setIsPlaying] = useState(false);
@@ -487,9 +470,9 @@ export default function AlignedFlow() {
         <div style={{ width: "100%", maxWidth: "520px" }}>
           {/* Content card — clicks here don't toggle timer */}
           <div onClick={(e) => e.stopPropagation()} style={{ background: "rgba(15,14,12,0.82)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: isMobile ? "1.25rem 1.15rem 1.1rem" : "1.75rem 1.75rem 1.5rem", boxShadow: `0 0 40px ${phase.color}10`, cursor: "default" }}>
-            {phaseId === "work" && <WorkContent phase={phase} />}
-            {phaseId === "short" && <ShortBreakContent phase={phase} />}
-            {phaseId === "long" && <LongBreakContent phase={phase} />}
+            {phaseId === "work" && <WorkContent phase={phase} items={config.workItems} />}
+            {phaseId === "short" && <ShortBreakContent phase={phase} exercises={config.shortBreakExercises} />}
+            {phaseId === "long" && <LongBreakContent phase={phase} exercises={config.longBreakExercises} />}
           </div>
         </div>
       </div>
