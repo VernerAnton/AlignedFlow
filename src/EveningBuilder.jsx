@@ -236,15 +236,15 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
           <div style={{ flex: 1, minWidth: 180 }}>
             <div style={{ fontSize: "0.58rem", letterSpacing: "0.12em", color: "#555", marginBottom: "0.3rem" }}>SWITCH-SIDES TIME</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input type="range" min={4} max={15} step={1} value={evening.switchBuffer} onChange={e => setEvening(prev => ({ ...prev, switchBuffer: Number(e.target.value) }))} style={{ flex: 1, accentColor: "#c4956a" }} />
-              <span style={{ fontSize: "0.7rem", color: "#c4956a", minWidth: 24 }}>{evening.switchBuffer}s</span>
+              <input type="range" min={4} max={15} step={1} value={evening.switchBuffer} onChange={e => setEvening(prev => ({ ...prev, switchBuffer: Number(e.target.value) }))} style={{ flex: 1, accentColor: evening.sections[0]?.color || "#c4956a" }} />
+              <span style={{ fontSize: "0.7rem", color: evening.sections[0]?.color || "#c4956a", minWidth: 24 }}>{evening.switchBuffer}s</span>
             </div>
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
             <div style={{ fontSize: "0.58rem", letterSpacing: "0.12em", color: "#555", marginBottom: "0.3rem" }}>TRANSITION TIME</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input type="range" min={5} max={20} step={1} value={evening.transitionTime} onChange={e => setEvening(prev => ({ ...prev, transitionTime: Number(e.target.value) }))} style={{ flex: 1, accentColor: "#c4956a" }} />
-              <span style={{ fontSize: "0.7rem", color: "#c4956a", minWidth: 24 }}>{evening.transitionTime}s</span>
+              <input type="range" min={5} max={20} step={1} value={evening.transitionTime} onChange={e => setEvening(prev => ({ ...prev, transitionTime: Number(e.target.value) }))} style={{ flex: 1, accentColor: evening.sections[0]?.color || "#c4956a" }} />
+              <span style={{ fontSize: "0.7rem", color: evening.sections[0]?.color || "#c4956a", minWidth: 24 }}>{evening.transitionTime}s</span>
             </div>
           </div>
         </div>
