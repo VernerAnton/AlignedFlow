@@ -199,7 +199,7 @@ export default function EveningRoutine({ config }) {
   const [phase, setPhase] = useState("idle"); // idle | exercise | transition | done
   const [timeLeft, setTimeLeft] = useState(getEffectiveDuration(exercises[0], switchBuffer));
   const [isPlaying, setIsPlaying] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
@@ -689,15 +689,6 @@ export default function EveningRoutine({ config }) {
       {/* Floating controls — centered horizontally within the fill area (left edge to rail) */}
       <div style={{ position: "fixed", bottom: "1.5rem", left: (windowW - railW) / 2, transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: isMobile ? 7 : 9, zIndex: 20 }}>
 
-        {/* Settings popover */}
-        {showSettings && (
-          <div style={{ position: "absolute", bottom: "calc(100% + 10px)", left: "50%", transform: "translateX(-50%)", background: "rgba(22,20,17,0.98)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 8, padding: "0.7rem 0.9rem", boxShadow: "0 8px 32px rgba(0,0,0,0.6)", zIndex: 30 }}>
-            <button onClick={toggleMuted} style={{ border: `1px solid ${muted ? "rgba(255,255,255,0.1)" : COLOR + "44"}`, background: "transparent", borderRadius: 6, padding: "0.32rem 0.7rem", cursor: "pointer", color: muted ? "rgba(255,255,255,0.25)" : COLOR, fontSize: "0.55rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em" }}>
-              {muted ? "SOUND OFF" : "SOUND ON"}
-            </button>
-          </div>
-        )}
-
         {/* ← prev */}
         <button onClick={onPrev} disabled={index === 0} style={{ ...btnBase, width: 38, height: 38, borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", color: index === 0 ? "#2a2a2a" : "rgba(255,255,255,0.55)", fontSize: "1.1rem", cursor: index === 0 ? "default" : "pointer" }}>‹</button>
 
@@ -712,8 +703,10 @@ export default function EveningRoutine({ config }) {
         {/* → next */}
         <button onClick={onNext} disabled={index >= exercises.length - 1} style={{ ...btnBase, width: 38, height: 38, borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", color: index >= exercises.length - 1 ? "#2a2a2a" : "rgba(255,255,255,0.55)", fontSize: "1.1rem", cursor: index >= exercises.length - 1 ? "default" : "pointer" }}>›</button>
 
-        {/* Settings */}
-        <button onClick={() => setShowSettings((s) => !s)} style={{ ...btnBase, width: 38, height: 38, borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", border: `1px solid ${showSettings ? COLOR : "rgba(255,255,255,0.15)"}`, color: showSettings ? COLOR : "rgba(255,255,255,0.35)", fontSize: "0.85rem" }}>⚙</button>
+        {/* Sound toggle */}
+        <button onClick={toggleMuted} style={{ ...btnBase, width: 38, height: 38, borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", border: `1px solid ${muted ? "rgba(255,255,255,0.15)" : COLOR + "44"}`, color: muted ? "rgba(255,255,255,0.2)" : COLOR, fontSize: "0.85rem", position: "relative" }}>
+          {muted ? "🔕" : "🔔"}
+        </button>
       </div>
     </div>
   );

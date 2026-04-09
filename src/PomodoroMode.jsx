@@ -172,6 +172,9 @@ const TimerRail = ({ phase, fillPct, isMobile, totalSeconds, timeLeft }) => {
 const SettingsDrawer = ({ phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, loopsUntilLong, setLoopsUntilLong, muted, toggleMuted }) => {
   const [open, setOpen] = useState(false);
   const drawerRef = useRef(null);
+  const drawerWidth = useWindowWidth();
+  const drawerMobile = drawerWidth < 600;
+  const fillOffset = drawerMobile ? 38 : 45;
 
   useEffect(() => {
     if (!open) return;
@@ -185,7 +188,7 @@ const SettingsDrawer = ({ phaseId, setPhaseId, phase, durations, setDurations, i
   const btnBase = { border: "1px solid rgba(255,255,255,0.18)", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" };
 
   return (
-    <div ref={drawerRef} style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", zIndex: 20 }}>
+    <div ref={drawerRef} style={{ position: "fixed", bottom: 0, left: `calc(50% + ${fillOffset / 2}px)`, transform: "translateX(-50%)", zIndex: 20 }}>
       {/* Drawer panel */}
       <div style={{
         background: "rgba(15,14,12,0.98)",
