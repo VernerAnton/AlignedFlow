@@ -65,6 +65,7 @@ export const DEFAULT_CONFIG = {
     ],
     switchBuffer: 8,
     transitionTime: 10,
+    muted: false,
   },
   pomodoro: {
     phases: {
@@ -89,6 +90,9 @@ export const DEFAULT_CONFIG = {
       { label: "DCF", title: "DCF Wall Protocol", subtitle: "Deep Cervical Flexor — primary rehab exercise", time: "5 min · 10 reps", steps: ["Stand or sit with back of skull touching the wall", "Chin level — not lifted, not tucked", "Gently nod chin toward throat — double chin movement. Skull stays on wall.", "Hold 10 seconds. Sternocleidomastoid must stay soft.", "Release fully. Rest 5 seconds.", "Repeat for 10 reps."], note: "If the rope-like muscle on the side of your neck activates, the movement is too large. Reduce it." },
       { label: "Pec minor", title: "Pec Minor Doorframe Stretch", subtitle: "The structural intervention — do not skip this", time: "90 sec", steps: ["Stand in doorframe — forearms on frame at shoulder height, elbows at 90°", "Step one foot through the doorway, gently lean forward", "Feel stretch across chest — not in shoulder joint", "Hold 30 sec, breathing slowly", "Raise arms to Y-shape (~135°) — 30 sec", "Return to 90° for final 30 sec"], note: "No doorframe: corner of a room with both hands on walls, same movement." },
     ],
+    durations: { work: 25, short: 5, long: 15 },
+    loopsUntilLong: 4,
+    muted: false,
   },
 };
 

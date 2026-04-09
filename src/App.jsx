@@ -62,7 +62,7 @@ export default function App() {
           }}
           onAnimationEnd={onExitEnd}
         >
-          {prevMode === 'work' ? <PomodoroMode config={config.pomodoro} /> : <EveningMode config={config.evening} />}
+          {prevMode === 'work' ? <PomodoroMode config={config.pomodoro} setConfig={setConfig} /> : <EveningMode config={config.evening} setConfig={setConfig} />}
         </div>
       )}
 
@@ -76,8 +76,8 @@ export default function App() {
             : 'none',
         }}
       >
-        {mode === 'work' && <PomodoroMode config={config.pomodoro} />}
-        {mode === 'evening' && <EveningMode config={config.evening} />}
+        {mode === 'work' && <PomodoroMode config={config.pomodoro} setConfig={setConfig} />}
+        {mode === 'evening' && <EveningMode config={config.evening} setConfig={setConfig} />}
         {mode === 'builder-work' && <PomodoroBuilder config={config} setConfig={setConfig} onBack={() => switchMode('work')} />}
         {mode === 'builder-evening' && <EveningBuilder config={config} setConfig={setConfig} onBack={() => switchMode('evening')} />}
       </div>

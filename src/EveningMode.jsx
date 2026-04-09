@@ -171,7 +171,7 @@ function ExerciseCard({ ex, color, sideLabel, totalCount }) {
 
 // ── Root ────────────────────────────────────────────────────────────────────
 
-export default function EveningRoutine({ config }) {
+export default function EveningRoutine({ config, setConfig }) {
   const exercises = config.exercises;
   const switchBuffer = config.switchBuffer;
 
@@ -200,9 +200,14 @@ export default function EveningRoutine({ config }) {
   const [timeLeft, setTimeLeft] = useState(getEffectiveDuration(exercises[0], switchBuffer));
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const [muted, setMuted] = useState(false);
-  const mutedRef = useRef(false);
+  const [muted, setMuted] = useState(() => config.muted ?? false);
+  const mutedRef = useRef(config.muted ?? false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
+
+  // Persist muted setting
+  useEffect(() => {
+    setConfig(prev => ({ ...prev, evening: { ...prev.evening, muted } }));
+  }, [muted]);
 
   // Bilateral sub-phase — derived from timeLeft for bilateral exercises
   // "side1" | "switching" | "side2" | null (for non-bilateral)

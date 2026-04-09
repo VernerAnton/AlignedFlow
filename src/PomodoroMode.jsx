@@ -258,16 +258,21 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export default function AlignedFlow({ config }) {
+export default function AlignedFlow({ config, setConfig }) {
   const [phaseId, setPhaseId] = useState("work");
-  const [durations, setDurations] = useState({ work: 25, short: 5, long: 15 });
+  const [durations, setDurations] = useState(() => config.durations || { work: 25, short: 5, long: 15 });
   const [isPlaying, setIsPlaying] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(25 * 60); // in seconds
+  const [timeLeft, setTimeLeft] = useState(() => (config.durations?.work || 25) * 60);
   const [workCount, setWorkCount] = useState(0); // counts completed work sessions
-  const [loopsUntilLong, setLoopsUntilLong] = useState(4); // work sessions before a long break
-  const [muted, setMuted] = useState(false);
-  const mutedRef = useRef(false);
+  const [loopsUntilLong, setLoopsUntilLong] = useState(() => config.loopsUntilLong ?? 4);
+  const [muted, setMuted] = useState(() => config.muted ?? false);
+  const mutedRef = useRef(config.muted ?? false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
+
+  // Persist settings changes back to config
+  useEffect(() => {
+    setConfig(prev => ({ ...prev, pomodoro: { ...prev.pomodoro, durations, loopsUntilLong, muted } }));
+  }, [durations, loopsUntilLong, muted]);
 
   const PHASES = useMemo(() => {
     const p = config.phases || { work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" }, short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" }, long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" } };
