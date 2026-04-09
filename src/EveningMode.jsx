@@ -199,7 +199,6 @@ export default function EveningRoutine({ config }) {
   const [phase, setPhase] = useState("idle"); // idle | exercise | transition | done
   const [timeLeft, setTimeLeft] = useState(getEffectiveDuration(exercises[0], switchBuffer));
   const [isPlaying, setIsPlaying] = useState(false);
-  const [td, setTd] = useState(config.transitionTime);
   const [showSettings, setShowSettings] = useState(false);
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
@@ -258,7 +257,6 @@ export default function EveningRoutine({ config }) {
   // Refs for timer closure safety
   const indexRef = useRef(0);
   const phaseRef = useRef("idle");
-  const tdRef = useRef(10);
 
   useEffect(() => { indexRef.current = index; }, [index]);
 
@@ -293,7 +291,7 @@ export default function EveningRoutine({ config }) {
     };
   }, [index, subPhase]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
-  useEffect(() => { tdRef.current = td; }, [td]);
+
 
   const slide = (dir, speed) => {
     const spd = speed || 900;
@@ -348,7 +346,7 @@ export default function EveningRoutine({ config }) {
   // When timeLeft changes (new second tick), set up the next interpolation segment
   useEffect(() => {
     if (resetAnimatingRef.current) return;
-    const dur = phaseRef.current === "transition" ? tdRef.current : getEffectiveDuration(exercises[indexRef.current], switchBuffer);
+    const dur = phaseRef.current === "transition" ? config.transitionTime : getEffectiveDuration(exercises[indexRef.current], switchBuffer);
     const currentFill = computeFill(timeLeft, phaseRef.current, dur);
     const nextFill = computeFill(Math.max(0, timeLeft - 1), phaseRef.current, dur);
 
@@ -374,7 +372,7 @@ export default function EveningRoutine({ config }) {
       segmentFromRef.current = smoothFillPct;
       segmentToRef.current = smoothFillPct;
     } else {
-      const dur = phaseRef.current === "transition" ? tdRef.current : getEffectiveDuration(exercises[indexRef.current], switchBuffer);
+      const dur = phaseRef.current === "transition" ? config.transitionTime : getEffectiveDuration(exercises[indexRef.current], switchBuffer);
       const nextFill = computeFill(Math.max(0, timeLeft - 1), phaseRef.current, dur);
       segmentDurationRef.current = 1000;
       segmentStartRef.current = performance.now();
@@ -421,7 +419,7 @@ export default function EveningRoutine({ config }) {
         slide("fwd");
         setIndex(next); indexRef.current = next;
         setPhase("transition"); phaseRef.current = "transition";
-        setTimeLeft(tdRef.current);
+        setTimeLeft(config.transitionTime);
         playExerciseCompleteSound(mutedRef.current);
       }
     } else if (phaseRef.current === "transition") {
@@ -510,7 +508,7 @@ export default function EveningRoutine({ config }) {
     setTimeLeft(getEffectiveDuration(exercises[p], switchBuffer));
   };
 
-  const totalDuration = phase === "transition" ? td : getEffectiveDuration(exercises[index], switchBuffer);
+  const totalDuration = phase === "transition" ? config.transitionTime : getEffectiveDuration(exercises[index], switchBuffer);
   // smoothFillPct is used for the waterline — continuous 60fps interpolation
   // Integer fillPct still needed for rail (which should snap to seconds)
   const fillPct = smoothFillPct;
@@ -693,19 +691,10 @@ export default function EveningRoutine({ config }) {
 
         {/* Settings popover */}
         {showSettings && (
-          <div style={{ position: "absolute", bottom: "calc(100% + 10px)", left: "50%", transform: "translateX(-50%)", background: "rgba(22,20,17,0.98)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 8, padding: "1rem 1.25rem", minWidth: 220, boxShadow: "0 8px 32px rgba(0,0,0,0.6)", zIndex: 30 }}>
-            <div style={{ fontSize: "0.6rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.7rem" }}>TRANSITION TIME</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: "#444" }}>5s</span>
-              <input type="range" min={5} max={20} step={1} value={td} onChange={(e) => setTd(Number(e.target.value))} style={{ flex: 1, accentColor: COLOR }} />
-              <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: "#444" }}>20s</span>
-              <span style={{ fontSize: "0.7rem", fontFamily: "'DM Mono', monospace", color: COLOR, minWidth: 24 }}>{td}s</span>
-            </div>
-            <div style={{ marginTop: "0.85rem", display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={toggleMuted} style={{ border: `1px solid ${muted ? "rgba(255,255,255,0.1)" : COLOR + "44"}`, background: "transparent", borderRadius: 6, padding: "0.32rem 0.7rem", cursor: "pointer", color: muted ? "rgba(255,255,255,0.25)" : COLOR, fontSize: "0.55rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em" }}>
-                {muted ? "SOUND OFF" : "SOUND ON"}
-              </button>
-            </div>
+          <div style={{ position: "absolute", bottom: "calc(100% + 10px)", left: "50%", transform: "translateX(-50%)", background: "rgba(22,20,17,0.98)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 8, padding: "0.7rem 0.9rem", boxShadow: "0 8px 32px rgba(0,0,0,0.6)", zIndex: 30 }}>
+            <button onClick={toggleMuted} style={{ border: `1px solid ${muted ? "rgba(255,255,255,0.1)" : COLOR + "44"}`, background: "transparent", borderRadius: 6, padding: "0.32rem 0.7rem", cursor: "pointer", color: muted ? "rgba(255,255,255,0.25)" : COLOR, fontSize: "0.55rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em" }}>
+              {muted ? "SOUND OFF" : "SOUND ON"}
+            </button>
           </div>
         )}
 
