@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { exportConfig, validateAndParseConfig } from "./dataStore";
+import { exportConfig, validateAndParseConfig, DEFAULT_CONFIG } from "./dataStore";
 
 const FONT = "'DM Mono', monospace";
 const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#f0ece4", fontFamily: FONT, fontSize: "0.78rem", padding: "0.4rem 0.6rem", width: "100%", outline: "none" };
@@ -7,14 +7,14 @@ const btnSmall = { border: "1px solid rgba(255,255,255,0.15)", background: "tran
 const btnDanger = { ...btnSmall, borderColor: "rgba(200,80,80,0.4)", color: "#c85050" };
 const labelStyle = { display: "block", fontSize: "0.55rem", letterSpacing: "0.1em", color: "#555", marginBottom: "0.2rem", textTransform: "uppercase" };
 
-const TABS = [
-  { id: "work", label: "WORK", color: "#4A90D9" },
-  { id: "short", label: "SHORT BREAK", color: "#3aaa7a" },
-  { id: "long", label: "LONG BREAK", color: "#9b72cf" },
-];
+const PHASE_IDS = ["work", "short", "long"];
+const PHASE_LABELS = { work: "Work", short: "Short Break", long: "Long Break" };
 
 export default function PomodoroBuilder({ config, setConfig, onBack }) {
-  const [pomo, setPomo] = useState(config.pomodoro);
+  const [pomo, setPomo] = useState(() => ({
+    ...config.pomodoro,
+    phases: config.pomodoro.phases || structuredClone(DEFAULT_CONFIG.pomodoro.phases),
+  }));
   const [tab, setTab] = useState("work");
   const [expandedItem, setExpandedItem] = useState(null);
   const [importError, setImportError] = useState(null);
@@ -25,6 +25,16 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
     const t = setTimeout(() => setConfig(prev => ({ ...prev, pomodoro: pomo })), 300);
     return () => clearTimeout(t);
   }, [pomo]);
+
+  const phases = pomo.phases;
+  const tabs = PHASE_IDS.map(id => ({ id, label: phases[id].tag || PHASE_LABELS[id], color: phases[id].color }));
+
+  const updatePhase = (id, patch) => {
+    setPomo(prev => ({
+      ...prev,
+      phases: { ...prev.phases, [id]: { ...prev.phases[id], ...patch } },
+    }));
+  };
 
   const handleImport = (e) => {
     const file = e.target.files[0];
@@ -44,7 +54,7 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
     e.target.value = "";
   };
 
-  const activeTab = TABS.find(t => t.id === tab);
+  const activeTab = tabs.find(t => t.id === tab);
 
   return (
     <div style={{ position: "relative", height: "100%", background: "#0f0e0c", overflow: "auto", fontFamily: FONT, color: "#f0ece4", WebkitOverflowScrolling: "touch" }}>
@@ -69,7 +79,7 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
 
       {/* Tab bar */}
       <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-        {TABS.map(t => (
+        {tabs.map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); setExpandedItem(null); }} style={{
             flex: 1, padding: "0.55rem 0.5rem", border: "none", background: "transparent", cursor: tab === t.id ? "default" : "pointer",
             fontFamily: FONT, fontSize: "0.55rem", letterSpacing: "0.1em",
@@ -83,6 +93,29 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
       </div>
 
       <div style={{ padding: "1rem", maxWidth: 600, margin: "0 auto" }}>
+        {/* Phase appearance editor */}
+        <div style={{ marginBottom: "1.2rem" }}>
+          <div style={{ fontSize: "0.58rem", letterSpacing: "0.12em", color: "#555", marginBottom: "0.5rem" }}>PHASE APPEARANCE</div>
+          {PHASE_IDS.map(id => {
+            const ph = phases[id];
+            return (
+              <div key={id} style={{ display: "flex", gap: "0.45rem", alignItems: "center", marginBottom: "0.4rem" }}>
+                <div style={{ width: 16, height: 16, borderRadius: 3, background: ph.color, flexShrink: 0, border: "1px solid rgba(255,255,255,0.1)" }} />
+                <div style={{ flex: "0 0 76px" }}>
+                  <input value={ph.color} onChange={e => updatePhase(id, { color: e.target.value })} style={{ ...inputStyle, fontSize: "0.68rem", padding: "0.35rem 0.45rem" }} placeholder="#hex" />
+                </div>
+                <div style={{ flex: "0 0 110px" }}>
+                  <input value={ph.tag} onChange={e => updatePhase(id, { tag: e.target.value })} style={{ ...inputStyle, fontSize: "0.68rem", padding: "0.35rem 0.45rem" }} placeholder="Display name" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <input value={ph.label} onChange={e => updatePhase(id, { label: e.target.value })} style={{ ...inputStyle, fontSize: "0.68rem", padding: "0.35rem 0.45rem" }} placeholder="Full label" />
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ fontSize: "0.5rem", color: "#444", marginTop: "0.25rem" }}>Color (hex) · Display name · Full label</div>
+        </div>
+
         {tab === "work" && (
           <WorkEditor items={pomo.workItems} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
             onChange={items => setPomo(prev => ({ ...prev, workItems: items }))} />

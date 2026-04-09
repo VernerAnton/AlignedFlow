@@ -1,33 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { playWorkSound, playShortBreakSound, playLongBreakSound } from "./sounds";
 import { sendNotification } from "./notifications";
-
-const PHASES = {
-  work: {
-    id: "work",
-    label: "Work Session",
-    duration: 25,
-    color: "#4A90D9",
-    colorDim: "rgba(74,144,217,0.32)",
-    tag: "FOCUS",
-  },
-  short: {
-    id: "short",
-    label: "Micro-Reset",
-    duration: 5,
-    color: "#3aaa7a",
-    colorDim: "rgba(58,170,122,0.32)",
-    tag: "SHORT BREAK",
-  },
-  long: {
-    id: "long",
-    label: "Long Break",
-    duration: 15,
-    color: "#9b72cf",
-    colorDim: "rgba(155,114,207,0.32)",
-    tag: "LONG BREAK",
-  },
-};
+import { computePhaseDim } from "./dataStore";
 
 function useWindowWidth() {
   const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 800);
@@ -169,7 +143,7 @@ const TimerRail = ({ phase, fillPct, isMobile, totalSeconds, timeLeft }) => {
 
 // ── Settings drawer ───────────────────────────────────────────────────────────
 
-const SettingsDrawer = ({ phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, loopsUntilLong, setLoopsUntilLong, muted, toggleMuted }) => {
+const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, loopsUntilLong, setLoopsUntilLong, muted, toggleMuted }) => {
   const [open, setOpen] = useState(false);
   const drawerRef = useRef(null);
   const drawerWidth = useWindowWidth();
@@ -237,7 +211,7 @@ const SettingsDrawer = ({ phaseId, setPhaseId, phase, durations, setDurations, i
           <div style={{ marginBottom: "1rem" }}>
             <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.5rem" }}>PHASE</div>
             <div style={{ display: "flex", gap: "0.35rem" }}>
-              {Object.values(PHASES).map((p) => (
+              {Object.values(phases).map((p) => (
                 <button key={p.id} onClick={() => setPhaseId(p.id)} disabled={isPlaying} style={{
                   padding: "0.4rem 0.8rem",
                   borderRadius: "5px",
@@ -258,7 +232,7 @@ const SettingsDrawer = ({ phaseId, setPhaseId, phase, durations, setDurations, i
           </div>
 
           {/* Duration settings */}
-          {Object.values(PHASES).map((p) => (
+          {Object.values(phases).map((p) => (
             <div key={p.id} style={{ marginBottom: "0.7rem" }}>
               <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>{p.tag}</div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -272,8 +246,8 @@ const SettingsDrawer = ({ phaseId, setPhaseId, phase, durations, setDurations, i
           <div style={{ marginBottom: "0.3rem" }}>
             <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>SESSIONS UNTIL LONG BREAK</div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input type="range" min={2} max={8} value={loopsUntilLong} onChange={(e) => setLoopsUntilLong(Number(e.target.value))} disabled={isPlaying} style={{ flex: 1, accentColor: PHASES.long.color }} />
-              <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: PHASES.long.color, minWidth: "20px" }}>{loopsUntilLong}</span>
+              <input type="range" min={2} max={8} value={loopsUntilLong} onChange={(e) => setLoopsUntilLong(Number(e.target.value))} disabled={isPlaying} style={{ flex: 1, accentColor: phases.long.color }} />
+              <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: phases.long.color, minWidth: "20px" }}>{loopsUntilLong}</span>
             </div>
           </div>
         </div>
@@ -294,6 +268,14 @@ export default function AlignedFlow({ config }) {
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
+
+  const PHASES = useMemo(() => {
+    const p = config.phases || { work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" }, short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" }, long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" } };
+    return Object.fromEntries(
+      Object.entries(p).map(([id, ph]) => [id, { id, ...ph, colorDim: computePhaseDim(ph.color) }])
+    );
+  }, [config.phases]);
+
   const phase = PHASES[phaseId];
   const width = useWindowWidth();
   const isMobile = width < 600;
@@ -480,7 +462,7 @@ export default function AlignedFlow({ config }) {
         </div>
       </div>
 
-      <SettingsDrawer phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} loopsUntilLong={loopsUntilLong} setLoopsUntilLong={setLoopsUntilLong} muted={muted} toggleMuted={toggleMuted} />
+      <SettingsDrawer phases={PHASES} phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} loopsUntilLong={loopsUntilLong} setLoopsUntilLong={setLoopsUntilLong} muted={muted} toggleMuted={toggleMuted} />
     </div>
   );
 }

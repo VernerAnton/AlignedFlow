@@ -13,6 +13,13 @@ export function computeSectionColors(hex) {
   };
 }
 
+export function computePhaseDim(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},0.32)`;
+}
+
 export const DEFAULT_CONFIG = {
   version: 1,
   evening: {
@@ -60,6 +67,11 @@ export const DEFAULT_CONFIG = {
     transitionTime: 10,
   },
   pomodoro: {
+    phases: {
+      work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" },
+      short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" },
+      long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" },
+    },
     workItems: [
       { id: "a", primary: "Collarbones wide, shoulders heavy", note: "the single cue that triggers everything else" },
       { id: "b", primary: "Monitor: top edge at / below eye level, arm's length away" },
@@ -87,7 +99,12 @@ export function loadConfig() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.version === 1) return parsed;
+      if (parsed && parsed.version === 1) {
+        if (!parsed.pomodoro.phases) {
+          parsed.pomodoro.phases = structuredClone(DEFAULT_CONFIG.pomodoro.phases);
+        }
+        return parsed;
+      }
     }
   } catch (e) {
     // corrupted — fall back to defaults
