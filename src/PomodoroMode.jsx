@@ -466,7 +466,7 @@ export default function AlignedFlow({ config }) {
       <TimerRail phase={phase} fillPct={fillPct} isMobile={isMobile} totalSeconds={totalDuration} timeLeft={timeLeft} />
 
       {/* Main content — tap empty area to play/pause */}
-      <div onClick={onPlayPause} style={{ position: "relative", zIndex: 5, minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", marginLeft: railW, padding: isMobile ? "1.25rem 1.25rem 5rem" : "2rem 2rem 5rem", cursor: "pointer" }}>
+      <div onClick={onPlayPause} style={{ position: "relative", zIndex: 5, minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: isMobile ? `1.25rem 1.25rem 5rem ${railW - 6 + 20}px` : `2rem 2rem 5rem ${railW - 7 + 32}px`, cursor: "pointer" }}>
         <div style={{ width: "100%", maxWidth: "520px" }}>
           {/* Content card — clicks here don't toggle timer */}
           <div onClick={(e) => e.stopPropagation()} style={{ background: "rgba(15,14,12,0.82)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: isMobile ? "1.25rem 1.15rem 1.1rem" : "1.75rem 1.75rem 1.5rem", boxShadow: `0 0 40px ${phase.color}10`, cursor: "default" }}>
