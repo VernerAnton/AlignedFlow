@@ -704,8 +704,12 @@ export default function EveningRoutine({ config }) {
         <button onClick={onNext} disabled={index >= exercises.length - 1} style={{ ...btnBase, width: 38, height: 38, borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", color: index >= exercises.length - 1 ? "#2a2a2a" : "rgba(255,255,255,0.55)", fontSize: "1.1rem", cursor: index >= exercises.length - 1 ? "default" : "pointer" }}>›</button>
 
         {/* Sound toggle */}
-        <button onClick={toggleMuted} style={{ ...btnBase, width: 38, height: 38, borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", border: `1px solid ${muted ? "rgba(255,255,255,0.15)" : COLOR + "44"}`, color: muted ? "rgba(255,255,255,0.2)" : COLOR, fontSize: "0.85rem", position: "relative" }}>
-          {muted ? "🔕" : "🔔"}
+        <button onClick={toggleMuted} style={{ ...btnBase, width: 38, height: 38, borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", border: `1px solid ${muted ? "rgba(255,255,255,0.15)" : COLOR + "44"}`, position: "relative" }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ opacity: muted ? 0.25 : 0.7 }}>
+            <path d="M8 1.5C8 1.5 5 4 5 6v3l-1.5 1.5V11.5h9V10.5L11 9V6c0-2-3-4.5-3-4.5z" stroke={muted ? "rgba(255,255,255,0.5)" : COLOR} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M6.5 11.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5" stroke={muted ? "rgba(255,255,255,0.5)" : COLOR} strokeWidth="1.2" strokeLinecap="round" />
+            {muted && <line x1="2" y1="2" x2="14" y2="14" stroke="rgba(255,255,255,0.5)" strokeWidth="1.2" strokeLinecap="round" />}
+          </svg>
         </button>
       </div>
     </div>
