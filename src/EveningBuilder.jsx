@@ -308,7 +308,7 @@ function CardEditor({ ex, sections, onUpdate, onDelete, onUpdateStep, onAddStep,
       <div style={{ display: "flex", gap: "0.5rem" }}>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>Duration (sec)</label>
-          <input type="number" value={ex.duration} onChange={e => onUpdate({ duration: e.target.value === "" ? "" : Number(e.target.value) })} onBlur={() => onUpdate({ duration: Math.max(1, Number(ex.duration) || 1) })} style={inputStyle} />
+          <input type="text" inputMode="numeric" value={ex.duration} onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ""); onUpdate({ duration: v === "" ? "" : Number(v) }); }} onBlur={() => onUpdate({ duration: Math.max(1, Number(ex.duration) || 1) })} style={inputStyle} />
         </div>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>Timing text</label>
