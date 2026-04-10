@@ -318,9 +318,7 @@ function CardEditor({ ex, sections, onUpdate, onDelete, onUpdateStep, onAddStep,
       <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>Section</label>
-          <select value={ex.section} onChange={e => onUpdate({ section: e.target.value })} style={{ ...inputStyle, appearance: "auto", colorScheme: "dark", backgroundColor: "#1a1918" }}>
-            {sections.map(s => <option key={s.name} value={s.name} style={{ background: "#1a1918", color: "#f0ece4" }}>{s.name}</option>)}
-          </select>
+          <SectionPicker value={ex.section} sections={sections} onChange={val => onUpdate({ section: val })} />
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", padding: "0.4rem 0" }}>
           <input type="checkbox" checked={!!ex.bilateral} onChange={e => onUpdate({ bilateral: e.target.checked })} />
@@ -344,6 +342,42 @@ function CardEditor({ ex, sections, onUpdate, onDelete, onUpdateStep, onAddStep,
       </div>
 
       <button onClick={onDelete} style={{ ...btnDanger, alignSelf: "flex-start", marginTop: "0.3rem" }}>DELETE EXERCISE</button>
+    </div>
+  );
+}
+
+function SectionPicker({ value, sections, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+  const current = sections.find(s => s.name === value);
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button onClick={() => setOpen(o => !o)} style={{ ...inputStyle, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", textAlign: "left" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {current && <div style={{ width: 10, height: 10, borderRadius: 2, background: current.color, flexShrink: 0 }} />}
+          <span>{value}</span>
+        </div>
+        <span style={{ fontSize: "0.6rem", color: "#555", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 30, background: "rgba(15,14,12,0.97)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, padding: "0.25rem 0", backdropFilter: "blur(8px)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+          {sections.map(s => (
+            <button key={s.name} onClick={() => { onChange(s.name); setOpen(false); }} style={{ display: "flex", alignItems: "center", gap: "0.5rem", width: "100%", textAlign: "left", padding: "0.45rem 0.6rem", border: "none", background: s.name === value ? "rgba(255,255,255,0.08)" : "transparent", cursor: "pointer", fontFamily: FONT, fontSize: "0.78rem", color: "#f0ece4" }}
+              onMouseEnter={e => { if (s.name !== value) e.target.style.background = "rgba(255,255,255,0.05)"; }}
+              onMouseLeave={e => { if (s.name !== value) e.target.style.background = "transparent"; }}
+            >
+              <div style={{ width: 10, height: 10, borderRadius: 2, background: s.color, flexShrink: 0 }} />
+              {s.name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
