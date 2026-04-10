@@ -225,8 +225,8 @@ function WorkEditor({ items, color, expanded, setExpanded, onChange }) {
               <div style={{ width: 8, height: 8, background: `${color}55`, transform: "rotate(45deg)", flexShrink: 0 }} />
               <span style={{ flex: 1, fontSize: "0.76rem", color: "#f0ece4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.primary}</span>
               <div style={{ display: "flex", gap: 2 }}>
-                <button onClick={e => { e.stopPropagation(); move(i, -1); }} disabled={i === 0} style={{ ...btnSmall, padding: "0.15rem 0.3rem", fontSize: "0.7rem", opacity: i === 0 ? 0.2 : 1 }}>↑</button>
-                <button onClick={e => { e.stopPropagation(); move(i, 1); }} disabled={i === items.length - 1} style={{ ...btnSmall, padding: "0.15rem 0.3rem", fontSize: "0.7rem", opacity: i === items.length - 1 ? 0.2 : 1 }}>↓</button>
+                <button onClick={e => { e.stopPropagation(); move(i, -1); }} disabled={i === 0} style={{ ...btnSmall, padding: "0.35rem 0.5rem", fontSize: "0.85rem", opacity: i === 0 ? 0.2 : 1 }}>↑</button>
+                <button onClick={e => { e.stopPropagation(); move(i, 1); }} disabled={i === items.length - 1} style={{ ...btnSmall, padding: "0.35rem 0.5rem", fontSize: "0.85rem", opacity: i === items.length - 1 ? 0.2 : 1 }}>↓</button>
               </div>
               <span style={{ fontSize: "0.7rem", color: "#555", transform: expanded === i ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>▸</span>
             </div>
@@ -323,8 +323,8 @@ function ExerciseListEditor({ exercises, color, expanded, setExpanded, onChange,
               <span style={{ flex: 1, fontSize: "0.76rem", color: "#f0ece4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ex.title}</span>
               <span style={{ fontSize: "0.6rem", color: "#555", whiteSpace: "nowrap" }}>{ex.time}</span>
               <div style={{ display: "flex", gap: 2 }}>
-                <button onClick={e => { e.stopPropagation(); move(i, -1); }} disabled={i === 0} style={{ ...btnSmall, padding: "0.15rem 0.3rem", fontSize: "0.7rem", opacity: i === 0 ? 0.2 : 1 }}>↑</button>
-                <button onClick={e => { e.stopPropagation(); move(i, 1); }} disabled={i === exercises.length - 1} style={{ ...btnSmall, padding: "0.15rem 0.3rem", fontSize: "0.7rem", opacity: i === exercises.length - 1 ? 0.2 : 1 }}>↓</button>
+                <button onClick={e => { e.stopPropagation(); move(i, -1); }} disabled={i === 0} style={{ ...btnSmall, padding: "0.35rem 0.5rem", fontSize: "0.85rem", opacity: i === 0 ? 0.2 : 1 }}>↑</button>
+                <button onClick={e => { e.stopPropagation(); move(i, 1); }} disabled={i === exercises.length - 1} style={{ ...btnSmall, padding: "0.35rem 0.5rem", fontSize: "0.85rem", opacity: i === exercises.length - 1 ? 0.2 : 1 }}>↓</button>
               </div>
               <span style={{ fontSize: "0.7rem", color: "#555", transform: expanded === i ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>▸</span>
             </div>
@@ -363,9 +363,9 @@ function ExerciseListEditor({ exercises, color, expanded, setExpanded, onChange,
                     <div key={si} style={{ display: "flex", gap: "0.3rem", alignItems: "center", marginBottom: "0.3rem" }}>
                       <span style={{ fontSize: "0.6rem", color: "#444", minWidth: 16, textAlign: "right" }}>{si + 1}</span>
                       <input value={step} onChange={e => updateStep(i, si, e.target.value)} onFocus={e => e.target.scrollIntoView({ behavior: "smooth", block: "nearest" })} style={{ ...inputStyle, flex: 1 }} />
-                      <button onClick={() => moveStep(i, si, -1)} disabled={si === 0} style={{ ...btnSmall, padding: "0.15rem 0.25rem", fontSize: "0.6rem", opacity: si === 0 ? 0.2 : 1 }}>↑</button>
-                      <button onClick={() => moveStep(i, si, 1)} disabled={si === ex.steps.length - 1} style={{ ...btnSmall, padding: "0.15rem 0.25rem", fontSize: "0.6rem", opacity: si === ex.steps.length - 1 ? 0.2 : 1 }}>↓</button>
-                      <button onClick={() => deleteStep(i, si)} style={{ ...btnDanger, padding: "0.15rem 0.25rem", fontSize: "0.6rem" }}>✕</button>
+                      <button onClick={() => moveStep(i, si, -1)} disabled={si === 0} style={{ ...btnSmall, padding: "0.3rem 0.4rem", fontSize: "0.75rem", opacity: si === 0 ? 0.2 : 1 }}>↑</button>
+                      <button onClick={() => moveStep(i, si, 1)} disabled={si === ex.steps.length - 1} style={{ ...btnSmall, padding: "0.3rem 0.4rem", fontSize: "0.75rem", opacity: si === ex.steps.length - 1 ? 0.2 : 1 }}>↓</button>
+                      <button onClick={() => deleteStep(i, si)} style={{ ...btnDanger, padding: "0.3rem 0.4rem", fontSize: "0.75rem" }}>✕</button>
                     </div>
                   ))}
                   <button onClick={() => addStep(i)} style={{ ...btnSmall, marginTop: "0.15rem" }}>+ STEP</button>
