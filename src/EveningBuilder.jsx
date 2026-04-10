@@ -263,9 +263,9 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
                   <span style={{ flex: 1, fontSize: "0.76rem", color: "#f0ece4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ex.title}</span>
                   {ex.bilateral && <span style={{ fontSize: "0.52rem", letterSpacing: "0.08em", color: colors.color, border: `1px solid ${colors.color}44`, borderRadius: 3, padding: "0.08rem 0.3rem" }}>B</span>}
                   <span style={{ fontSize: "0.6rem", color: "#555", whiteSpace: "nowrap" }}>{ex.duration}s</span>
-                  <div style={{ display: "flex", gap: 2 }}>
-                    <button onClick={e => { e.stopPropagation(); moveExercise(i, -1); }} disabled={i === 0} style={{ ...btnSmall, padding: "0.15rem 0.3rem", fontSize: "0.7rem", opacity: i === 0 ? 0.2 : 1 }}>↑</button>
-                    <button onClick={e => { e.stopPropagation(); moveExercise(i, 1); }} disabled={i === evening.exercises.length - 1} style={{ ...btnSmall, padding: "0.15rem 0.3rem", fontSize: "0.7rem", opacity: i === evening.exercises.length - 1 ? 0.2 : 1 }}>↓</button>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button onClick={e => { e.stopPropagation(); moveExercise(i, -1); }} disabled={i === 0} style={{ ...btnSmall, padding: "0.35rem 0.5rem", fontSize: "0.85rem", opacity: i === 0 ? 0.2 : 1 }}>↑</button>
+                    <button onClick={e => { e.stopPropagation(); moveExercise(i, 1); }} disabled={i === evening.exercises.length - 1} style={{ ...btnSmall, padding: "0.35rem 0.5rem", fontSize: "0.85rem", opacity: i === evening.exercises.length - 1 ? 0.2 : 1 }}>↓</button>
                   </div>
                   <span style={{ fontSize: "0.7rem", color: "#555", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>▸</span>
                 </div>
@@ -335,9 +335,9 @@ function CardEditor({ ex, sections, onUpdate, onDelete, onUpdateStep, onAddStep,
           <div key={si} style={{ display: "flex", gap: "0.3rem", alignItems: "center", marginBottom: "0.3rem" }}>
             <span style={{ fontSize: "0.6rem", color: "#444", minWidth: 16, textAlign: "right" }}>{si + 1}</span>
             <input value={step} onChange={e => onUpdateStep(si, e.target.value)} onFocus={e => e.target.scrollIntoView({ behavior: "smooth", block: "nearest" })} style={{ ...inputStyle, flex: 1 }} />
-            <button onClick={() => onMoveStep(si, -1)} disabled={si === 0} style={{ ...btnSmall, padding: "0.15rem 0.25rem", fontSize: "0.6rem", opacity: si === 0 ? 0.2 : 1 }}>↑</button>
-            <button onClick={() => onMoveStep(si, 1)} disabled={si === ex.steps.length - 1} style={{ ...btnSmall, padding: "0.15rem 0.25rem", fontSize: "0.6rem", opacity: si === ex.steps.length - 1 ? 0.2 : 1 }}>↓</button>
-            <button onClick={() => onDeleteStep(si)} style={{ ...btnDanger, padding: "0.15rem 0.25rem", fontSize: "0.6rem" }}>✕</button>
+            <button onClick={() => onMoveStep(si, -1)} disabled={si === 0} style={{ ...btnSmall, padding: "0.3rem 0.4rem", fontSize: "0.75rem", opacity: si === 0 ? 0.2 : 1 }}>↑</button>
+            <button onClick={() => onMoveStep(si, 1)} disabled={si === ex.steps.length - 1} style={{ ...btnSmall, padding: "0.3rem 0.4rem", fontSize: "0.75rem", opacity: si === ex.steps.length - 1 ? 0.2 : 1 }}>↓</button>
+            <button onClick={() => onDeleteStep(si)} style={{ ...btnDanger, padding: "0.3rem 0.4rem", fontSize: "0.75rem" }}>✕</button>
           </div>
         ))}
         <button onClick={onAddStep} style={{ ...btnSmall, marginTop: "0.15rem" }}>+ STEP</button>
