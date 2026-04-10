@@ -318,8 +318,8 @@ function CardEditor({ ex, sections, onUpdate, onDelete, onUpdateStep, onAddStep,
       <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>Section</label>
-          <select value={ex.section} onChange={e => onUpdate({ section: e.target.value })} style={{ ...inputStyle, appearance: "auto", colorScheme: "dark" }}>
-            {sections.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+          <select value={ex.section} onChange={e => onUpdate({ section: e.target.value })} style={{ ...inputStyle, appearance: "auto", colorScheme: "dark", backgroundColor: "#1a1918" }}>
+            {sections.map(s => <option key={s.name} value={s.name} style={{ background: "#1a1918", color: "#f0ece4" }}>{s.name}</option>)}
           </select>
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", padding: "0.4rem 0" }}>
