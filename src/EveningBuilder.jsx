@@ -256,7 +256,7 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
             const colors = computeSectionColors((evening.sections.find(s => s.name === ex.section) || { color: "#888" }).color);
             const isExpanded = expandedCard === ex.id;
             return (
-              <div key={ex.id} style={{ border: `1px solid ${isExpanded ? colors.color + "44" : "rgba(255,255,255,0.08)"}`, borderRadius: 8, overflow: "hidden", background: isExpanded ? "rgba(255,255,255,0.02)" : "transparent" }}>
+              <div key={ex.id} style={{ border: `1px solid ${isExpanded ? colors.color + "44" : "rgba(255,255,255,0.08)"}`, borderRadius: 8, overflow: isExpanded ? "visible" : "hidden", background: isExpanded ? "rgba(255,255,255,0.02)" : "transparent", position: isExpanded ? "relative" : "static", zIndex: isExpanded ? 10 : "auto" }}>
                 {/* Collapsed row */}
                 <div onClick={() => setExpandedCard(isExpanded ? null : ex.id)} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.65rem", cursor: "pointer" }}>
                   <div style={{ width: 10, height: 10, borderRadius: 2, background: colors.color, flexShrink: 0 }} />
