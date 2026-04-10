@@ -308,7 +308,7 @@ function CardEditor({ ex, sections, onUpdate, onDelete, onUpdateStep, onAddStep,
       <div style={{ display: "flex", gap: "0.5rem" }}>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>Duration (sec)</label>
-          <input type="text" inputMode="numeric" value={ex.duration} onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ""); onUpdate({ duration: v === "" ? "" : Number(v) }); }} onBlur={() => onUpdate({ duration: Math.max(1, Number(ex.duration) || 1) })} style={inputStyle} />
+          <DurationInput value={ex.duration} onChange={val => onUpdate({ duration: val })} />
         </div>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>Timing text</label>
@@ -345,6 +345,21 @@ function CardEditor({ ex, sections, onUpdate, onDelete, onUpdateStep, onAddStep,
 
       <button onClick={onDelete} style={{ ...btnDanger, alignSelf: "flex-start", marginTop: "0.3rem" }}>DELETE EXERCISE</button>
     </div>
+  );
+}
+
+function DurationInput({ value, onChange }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => { setDraft(String(value)); }, [value]);
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={draft}
+      onChange={e => setDraft(e.target.value.replace(/[^0-9]/g, ""))}
+      onBlur={() => { const n = Math.max(1, Number(draft) || 1); setDraft(String(n)); onChange(n); }}
+      style={inputStyle}
+    />
   );
 }
 
