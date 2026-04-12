@@ -27,7 +27,8 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
   const handleReset = (scope) => {
     const defaults = DEFAULT_CONFIG.evening;
     const messages = {
-      sections: "Reset all section colors & names to defaults?",
+      sectionColors: "Reset section colors to defaults? (Names will be kept)",
+      sectionsFull: "Reset ALL sections (names, colors, count) to defaults?",
       exercises: "Reset all exercises to defaults?",
       settings: "Reset settings (switch-sides time, transition time) to defaults?",
       everything: "Reset ENTIRE evening config to defaults?",
@@ -35,8 +36,24 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
     if (!window.confirm(messages[scope])) return;
     setShowResetMenu(false);
     setExpandedCard(null);
-    if (scope === "sections") {
-      setEvening(prev => ({ ...prev, sections: structuredClone(defaults.sections) }));
+    if (scope === "sectionColors") {
+      setEvening(prev => ({
+        ...prev,
+        sections: prev.sections.map((sec, i) => ({
+          ...sec,
+          color: defaults.sections[i]?.color ?? sec.color,
+        })),
+      }));
+    } else if (scope === "sectionsFull") {
+      setEvening(prev => {
+        const newSections = structuredClone(defaults.sections);
+        const validNames = new Set(newSections.map(s => s.name));
+        const fallback = newSections[0]?.name || "Standing";
+        const exercises = prev.exercises.map(ex =>
+          validNames.has(ex.section) ? ex : { ...ex, section: fallback }
+        );
+        return { ...prev, sections: newSections, exercises };
+      });
     } else if (scope === "exercises") {
       setEvening(prev => ({ ...prev, exercises: structuredClone(defaults.exercises) }));
     } else if (scope === "settings") {
@@ -182,7 +199,8 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
             {showResetMenu && (
               <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 30, background: "rgba(15,14,12,0.97)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, padding: "0.3rem 0", minWidth: 200, backdropFilter: "blur(8px)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
                 {[
-                  { scope: "sections", label: "Sections (colors & names)" },
+                  { scope: "sectionColors", label: "Section colors" },
+                  { scope: "sectionsFull", label: "Sections (full reset)" },
                   { scope: "exercises", label: "Exercises" },
                   { scope: "settings", label: "Settings" },
                   { scope: "everything", label: "Reset everything" },
