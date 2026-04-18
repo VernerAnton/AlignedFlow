@@ -341,12 +341,54 @@ export default function EveningRoutine({ config, setConfig }) {
     return dur > 0 ? (tl / dur) * 100 : 0;
   };
 
-  // Countdown tick — still integer seconds for display
+  // Countdown tick using Web Worker and Date.now() for background accuracy
+  const workerRef = useRef(null);
+  const lastTickRef = useRef(null);
+
   useEffect(() => {
-    if (!isPlaying || phase === "idle" || phase === "done") return;
-    const id = setInterval(() => setTimeLeft((t) => Math.max(0, t - 1)), 1000);
-    return () => clearInterval(id);
+    if (!isPlaying || phase === "idle" || phase === "done") {
+      if (workerRef.current) {
+        workerRef.current.postMessage('stop');
+      }
+      lastTickRef.current = null;
+      return;
+    }
+
+    if (!workerRef.current) {
+      workerRef.current = new Worker(new URL('./timerWorker.js', import.meta.url));
+      workerRef.current.onmessage = () => {
+        const now = Date.now();
+        if (lastTickRef.current) {
+          const delta = Math.floor((now - lastTickRef.current) / 1000);
+          if (delta > 0) {
+            setTimeLeft((t) => Math.max(0, t - delta));
+            lastTickRef.current += delta * 1000; // Keep remainder for next tick
+          }
+        } else {
+          lastTickRef.current = now;
+          setTimeLeft((t) => Math.max(0, t - 1));
+        }
+      };
+    }
+
+    lastTickRef.current = Date.now();
+    workerRef.current.postMessage('start');
+
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.postMessage('stop');
+      }
+    };
   }, [isPlaying, phase, index]);
+
+  // Cleanup worker on unmount
+  useEffect(() => {
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+      }
+    };
+  }, []);
 
   // When timeLeft changes (new second tick), set up the next interpolation segment
   useEffect(() => {
