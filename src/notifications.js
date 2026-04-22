@@ -15,12 +15,15 @@ export async function requestNotificationPermission() {
 
 export function sendNotification(title, body) {
   if (!permissionGranted || !('Notification' in window)) return;
-  // Prefer service worker notification (works when app is backgrounded)
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+  if ('serviceWorker' in navigator) {
+    // serviceWorker.ready resolves once SW is active, even before the page is "controlled"
+    // SW showNotification is required for OS-level toast notifications on Windows/Android
     navigator.serviceWorker.ready.then(reg => {
-      reg.showNotification(title, { body, icon: '/icon.jpg', badge: '/icon.jpg' });
+      return reg.showNotification(title, { body, icon: '/icon.jpg', badge: '/icon.jpg' });
+    }).catch(() => {
+      try { new Notification(title, { body }); } catch (_) {}
     });
   } else {
-    new Notification(title, { body });
+    try { new Notification(title, { body }); } catch (_) {}
   }
 }
