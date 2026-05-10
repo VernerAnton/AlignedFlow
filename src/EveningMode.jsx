@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playDoneSound } from "./sounds";
 import { sendNotification } from "./notifications";
 import { computeSectionColors } from "./dataStore";
@@ -266,7 +266,7 @@ export default function EveningRoutine({ config, setConfig }) {
 
   useEffect(() => { indexRef.current = index; }, [index]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Don't re-measure during switching — the overlay can cause sub-pixel reflow
     if (subPhase === "switching") return;
     if (cardRef.current) {
