@@ -48,6 +48,10 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
       setPomo(structuredClone(defaults));
     } else if (scope === "settings") {
       setPomo(prev => ({ ...prev, durations: structuredClone(defaults.durations), loopsUntilLong: defaults.loopsUntilLong, muted: defaults.muted ?? false }));
+    } else if (scope === "shortBreakExercises") {
+      setPomo(prev => ({ ...prev, shortBreakExercises: structuredClone(defaults.shortBreakExercises), shortBreakSummary: defaults.shortBreakSummary }));
+    } else if (scope === "longBreakExercises") {
+      setPomo(prev => ({ ...prev, longBreakExercises: structuredClone(defaults.longBreakExercises), longBreakSummary: defaults.longBreakSummary }));
     } else {
       setPomo(prev => ({ ...prev, [scope]: structuredClone(defaults[scope]) }));
     }
@@ -174,12 +178,24 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
             onChange={items => setPomo(prev => ({ ...prev, workItems: items }))} />
         )}
         {tab === "short" && (
-          <ExerciseListEditor exercises={pomo.shortBreakExercises} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
-            onChange={exercises => setPomo(prev => ({ ...prev, shortBreakExercises: exercises }))} hasSubtitle={false} hasNote={false} />
+          <>
+            <div style={{ marginBottom: "1rem" }}>
+              <label style={labelStyle}>Summary line (shown above exercises)</label>
+              <input value={pomo.shortBreakSummary || ""} onChange={e => setPomo(prev => ({ ...prev, shortBreakSummary: e.target.value }))} style={inputStyle} placeholder="e.g. 3 exercises · under 60 seconds" />
+            </div>
+            <ExerciseListEditor exercises={pomo.shortBreakExercises} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
+              onChange={exercises => setPomo(prev => ({ ...prev, shortBreakExercises: exercises }))} hasSubtitle={false} hasNote={false} />
+          </>
         )}
         {tab === "long" && (
-          <ExerciseListEditor exercises={pomo.longBreakExercises} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
-            onChange={exercises => setPomo(prev => ({ ...prev, longBreakExercises: exercises }))} hasSubtitle hasNote />
+          <>
+            <div style={{ marginBottom: "1rem" }}>
+              <label style={labelStyle}>Summary line (shown above exercises)</label>
+              <input value={pomo.longBreakSummary || ""} onChange={e => setPomo(prev => ({ ...prev, longBreakSummary: e.target.value }))} style={inputStyle} placeholder="e.g. 2 exercises · 7 minutes total" />
+            </div>
+            <ExerciseListEditor exercises={pomo.longBreakExercises} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
+              onChange={exercises => setPomo(prev => ({ ...prev, longBreakExercises: exercises }))} hasSubtitle hasNote />
+          </>
         )}
         <div style={{ height: 80 }} />
       </div>

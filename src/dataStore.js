@@ -81,6 +81,8 @@ export const DEFAULT_CONFIG = {
       { id: "e", primary: "Neutral neck: double chin, then release 20–30%" },
       { id: "f", primary: "Phone: at eye level for anything over 30 seconds" },
     ],
+    shortBreakSummary: "3 exercises · under 60 seconds",
+    longBreakSummary: "2 exercises · 7 minutes total",
     shortBreakExercises: [
       { label: "Reset A", title: "Shoulder sequence", time: "20 sec", steps: ["Shrug both shoulders up to ears", "Roll them back — squeeze shoulder blades together", "Drop them down completely, let them fall heavy", "Repeat once more", "Widen collarbones, settle 10–20% back", "3 slow belly breaths"] },
       { label: "Reset B", title: "Neck de-bracing", time: "15 sec", steps: ["Sit tall, chin level", "Glide head straight back — subtle double chin, face stays level", "5 small nods from that retracted position", "Hold the last one 5 seconds, then release fully"] },
@@ -106,6 +108,12 @@ export function loadConfig() {
       if (parsed && parsed.version === 1) {
         if (!parsed.pomodoro.phases) {
           parsed.pomodoro.phases = structuredClone(DEFAULT_CONFIG.pomodoro.phases);
+        }
+        if (!parsed.pomodoro.shortBreakSummary) {
+          parsed.pomodoro.shortBreakSummary = DEFAULT_CONFIG.pomodoro.shortBreakSummary;
+        }
+        if (!parsed.pomodoro.longBreakSummary) {
+          parsed.pomodoro.longBreakSummary = DEFAULT_CONFIG.pomodoro.longBreakSummary;
         }
         return parsed;
       }
@@ -155,6 +163,8 @@ export function validateAndParseConfig(jsonString) {
     if (!Array.isArray(c.pomodoro.workItems)) return { ok: false, error: "Missing pomodoro work items" };
     if (!Array.isArray(c.pomodoro.shortBreakExercises)) return { ok: false, error: "Missing short break exercises" };
     if (!Array.isArray(c.pomodoro.longBreakExercises)) return { ok: false, error: "Missing long break exercises" };
+    if (!c.pomodoro.shortBreakSummary) c.pomodoro.shortBreakSummary = DEFAULT_CONFIG.pomodoro.shortBreakSummary;
+    if (!c.pomodoro.longBreakSummary) c.pomodoro.longBreakSummary = DEFAULT_CONFIG.pomodoro.longBreakSummary;
     return { ok: true, config: c };
   } catch (e) {
     return { ok: false, error: "Invalid JSON" };
