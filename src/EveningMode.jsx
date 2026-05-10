@@ -196,7 +196,8 @@ export default function EveningRoutine({ config, setConfig }) {
 
   // Session state
   const [index, setIndex] = useState(0);
-  const [phase, setPhase] = useState("idle"); // idle | exercise | transition | done
+  const [phase, setPhase] = useState("idle"); // idle | starting | exercise | transition | done
+  const [startCountdown, setStartCountdown] = useState(null); // 5 → 0 → null
   const [timeLeft, setTimeLeft] = useState(getEffectiveDuration(exercises[0], switchBuffer));
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -336,7 +337,7 @@ export default function EveningRoutine({ config, setConfig }) {
 
   // Compute what fillPct should be for a given timeLeft value
   const computeFill = (tl, ph, dur) => {
-    if (ph === "idle") return 100;
+    if (ph === "idle" || ph === "starting") return 100;
     if (ph === "transition") return dur > 0 ? (1 - tl / dur) * 100 : 100;
     return dur > 0 ? (tl / dur) * 100 : 0;
   };
@@ -346,7 +347,7 @@ export default function EveningRoutine({ config, setConfig }) {
   const lastTickRef = useRef(null);
 
   useEffect(() => {
-    if (!isPlaying || phase === "idle" || phase === "done") {
+    if (!isPlaying || phase === "idle" || phase === "done" || phase === "starting") {
       if (workerRef.current) {
         workerRef.current.postMessage('stop');
       }
@@ -389,6 +390,28 @@ export default function EveningRoutine({ config, setConfig }) {
       }
     };
   }, []);
+
+  // Start countdown — decrements every second while in "starting" phase
+  useEffect(() => {
+    if (!isPlaying || phase !== "starting") return;
+    const id = setInterval(() => setStartCountdown(c => Math.max(0, (c ?? 5) - 1)), 1000);
+    return () => clearInterval(id);
+  }, [isPlaying, phase]);
+
+  // When countdown hits 0, kick off the real exercise
+  useEffect(() => {
+    if (phase !== "starting" || startCountdown !== 0) return;
+    setPhase("exercise"); phaseRef.current = "exercise";
+    setTimeLeft(getEffectiveDuration(exercises[index], switchBuffer));
+    setStartCountdown(null);
+    playSide2Chime(mutedRef.current);
+  }, [startCountdown, phase]);
+
+  // Ring tone on each countdown tick
+  useEffect(() => {
+    if (!isPlaying || phase !== "starting" || startCountdown === null || startCountdown === 0) return;
+    playRingTone(mutedRef.current);
+  }, [startCountdown]);
 
   // When timeLeft changes (new second tick), set up the next interpolation segment
   useEffect(() => {
@@ -478,8 +501,8 @@ export default function EveningRoutine({ config, setConfig }) {
   const onPlayPause = () => {
     if (phase === "done") return;
     if (!isPlaying && phase === "idle") {
-      setPhase("exercise"); phaseRef.current = "exercise";
-      setTimeLeft(getEffectiveDuration(exercises[index], switchBuffer));
+      setPhase("starting"); phaseRef.current = "starting";
+      setStartCountdown(5);
     }
     setIsPlaying((p) => !p);
   };
@@ -487,6 +510,7 @@ export default function EveningRoutine({ config, setConfig }) {
   const onReset = () => {
     setIsPlaying(false);
     setPhase("idle"); phaseRef.current = "idle";
+    setStartCountdown(null);
 
     // If already at first card, just reset timer
     if (indexRef.current === 0) {
@@ -648,6 +672,7 @@ export default function EveningRoutine({ config, setConfig }) {
           const ease = "cubic-bezier(0.16, 1, 0.3, 1)"; // expo out — fast start, gentle land
 
           const isSwitching = isCurrent && subPhase === "switching";
+          const isStarting  = isCurrent && phase === "starting";
 
           return (
             <div key={ci} ref={isCurrent ? cardRef : null} style={{
@@ -664,10 +689,10 @@ export default function EveningRoutine({ config, setConfig }) {
               opacity: opac,
               zIndex: 10 - Math.abs(rel),
               pointerEvents: isCurrent ? "auto" : "none",
-              overflow: isSwitching ? "visible" : "hidden",
+              overflow: isSwitching || isStarting ? "visible" : "hidden",
             }}>
               {/* Glow overlay — opacity driven by RAF loop, synced to ring dissolves */}
-              {isSwitching && (
+              {(isSwitching || isStarting) && (
                 <div style={{
                   position: "absolute", inset: 0, borderRadius: 10,
                   boxShadow: `0 0 30px 10px ${COLOR}, 0 0 60px 22px ${COLOR}80, 0 0 95px 38px ${COLOR}40`,
@@ -681,14 +706,14 @@ export default function EveningRoutine({ config, setConfig }) {
                 backdropFilter: "blur(8px)",
                 border: `1px solid ${isCurrent ? "rgba(255,255,255,0.09)" : "rgba(255,255,255,0.04)"}`,
                 borderRadius: 10,
-                boxShadow: isCurrent && !isSwitching ? `0 0 40px ${COLOR}15, 0 2px 20px rgba(0,0,0,0.3)` : "0 2px 12px rgba(0,0,0,0.2)",
+                boxShadow: isCurrent && !isSwitching && !isStarting ? `0 0 40px ${COLOR}15, 0 2px 20px rgba(0,0,0,0.3)` : "0 2px 12px rgba(0,0,0,0.2)",
                 overflow: "hidden",
               }}>
-              {/* Exercise content — dims during switch */}
+              {/* Exercise content — dims during switch or start countdown */}
               <div style={{
-                opacity: isSwitching ? 0.15 : 1,
+                opacity: isSwitching || isStarting ? 0.15 : 1,
                 transition: "opacity 0.5s ease",
-                filter: isSwitching ? "blur(1px)" : "none",
+                filter: isSwitching || isStarting ? "blur(1px)" : "none",
               }}>
                 <ExerciseCard
                   ex={exercises[ci]}
@@ -716,6 +741,27 @@ export default function EveningRoutine({ config, setConfig }) {
                   </div>
                 </div>
               )}
+
+              {/* GET READY overlay — shown during 5-second start countdown */}
+              {isStarting && (
+                <div style={{
+                  position: "absolute", inset: 0,
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  pointerEvents: "none", zIndex: 5,
+                }}>
+                  <div style={{
+                    fontSize: "0.9rem", letterSpacing: "0.3em", textTransform: "uppercase",
+                    fontFamily: "'DM Mono', monospace", color: COLOR, opacity: 0.9, marginBottom: "0.5rem",
+                  }}>
+                    Get Ready
+                  </div>
+                  <div style={{
+                    fontSize: "2rem", fontFamily: "'DM Mono', monospace", color: COLOR, opacity: 0.6,
+                  }}>
+                    {startCountdown}
+                  </div>
+                </div>
+              )}
               </div>{/* end inner wrapper */}
             </div>
           );
@@ -726,6 +772,17 @@ export default function EveningRoutine({ config, setConfig }) {
       {subPhase === "switching" && cardRect && (
         <SwitchRings
           switchSecsLeft={switchSecsLeft}
+          color={COLOR}
+          cardRect={cardRect}
+          isMobile={isMobile}
+          railW={railW}
+        />
+      )}
+
+      {/* Start countdown rings — same component, driven by startCountdown */}
+      {phase === "starting" && cardRect && (
+        <SwitchRings
+          switchSecsLeft={startCountdown ?? 0}
           color={COLOR}
           cardRect={cardRect}
           isMobile={isMobile}
