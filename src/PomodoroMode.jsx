@@ -162,7 +162,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
   const btnBase = { border: "1px solid rgba(255,255,255,0.18)", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" };
 
   return (
-    <div ref={drawerRef} style={{ position: "fixed", bottom: 0, left: `calc(50% + ${fillOffset / 2}px)`, transform: "translateX(-50%)", zIndex: 20 }}>
+    <div ref={drawerRef} style={{ position: "fixed", bottom: 0, left: `calc(50% + ${fillOffset / 2}px)`, transform: "translateX(-50%)", zIndex: 20, pointerEvents: open ? "auto" : "none" }}>
       {/* Drawer panel */}
       <div style={{
         background: "rgba(15,14,12,0.98)",
@@ -182,6 +182,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             alignItems: "center",
             justifyContent: "center",
             cursor: "pointer",
+            pointerEvents: "auto",
           }}
         >
           <svg width="14" height="8" viewBox="0 0 14 8" style={{ opacity: 0.35, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.3s" }}>
