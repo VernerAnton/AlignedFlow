@@ -486,6 +486,7 @@ export default function AlignedFlow({ config, setConfig }) {
 
   return (
     <div style={{ position: "relative", minHeight: "100%", background: "#0f0e0c", fontFamily: "Georgia, serif", overflow: "hidden" }}>
+      <style dangerouslySetInnerHTML={{ __html: `.pomo-card::-webkit-scrollbar{display:none}` }} />
 
       {/* Background fill — tap to play/pause */}
       <div onClick={onPlayPause} style={{ position: "absolute", bottom: 0, left: isMobile ? railW - 6 : railW - 7, right: 0, height: `${fillPct}%`, background: phase.colorDim, transition: "background 0.6s ease", cursor: "pointer", zIndex: 0 }} />
@@ -499,10 +500,10 @@ export default function AlignedFlow({ config, setConfig }) {
       <TimerRail phase={phase} fillPct={fillPct} isMobile={isMobile} totalSeconds={totalDuration} timeLeft={timeLeft} />
 
       {/* Main content — tap empty area to play/pause */}
-      <div onClick={onPlayPause} style={{ position: "relative", zIndex: 5, minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: isMobile ? `1.25rem 1.25rem 5rem ${railW - 6 + 20}px` : `2rem 2rem 5rem ${railW - 7 + 32}px`, cursor: "pointer" }}>
+      <div onClick={onPlayPause} style={{ position: "relative", zIndex: 5, minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: isMobile ? `2.5rem 1.25rem 5rem ${railW - 6 + 20}px` : `3.5rem 2rem 5rem ${railW - 7 + 32}px`, cursor: "pointer" }}>
         <div style={{ width: "100%", maxWidth: "520px" }}>
           {/* Content card — clicks here don't toggle timer */}
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "rgba(15,14,12,0.82)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: isMobile ? "1.25rem 1.15rem 1.1rem" : "1.75rem 1.75rem 1.5rem", boxShadow: `0 0 40px ${phase.color}10`, cursor: "default" }}>
+          <div className="pomo-card" onClick={(e) => e.stopPropagation()} style={{ background: "rgba(15,14,12,0.82)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: isMobile ? "1.25rem 1.15rem 1.1rem" : "1.75rem 1.75rem 1.5rem", boxShadow: `0 0 40px ${phase.color}10`, cursor: "default", maxHeight: isMobile ? "calc(100vh - 7.5rem)" : "calc(100vh - 8.5rem)", overflowY: "auto", msOverflowStyle: "none", scrollbarWidth: "none" }}>
             {phaseId === "work" && <WorkContent phase={phase} items={config.workItems} />}
             {phaseId === "short" && <ShortBreakContent phase={phase} exercises={config.shortBreakExercises} summary={config.shortBreakSummary} />}
             {phaseId === "long" && <LongBreakContent phase={phase} exercises={config.longBreakExercises} summary={config.longBreakSummary} />}
