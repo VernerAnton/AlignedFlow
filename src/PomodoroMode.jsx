@@ -52,13 +52,13 @@ const StepList = ({ steps, phase }) => steps.map((step, i) => (
   </div>
 ));
 
-const ShortBreakContent = ({ phase, exercises }) => {
+const ShortBreakContent = ({ phase, exercises, summary }) => {
   const [active, setActive] = useState(0);
   const ex = exercises[active];
   return (
     <div>
       <div style={{ marginBottom: "1.15rem" }}>
-        <div style={{ fontSize: "0.62rem", letterSpacing: "0.18em", textTransform: "uppercase", color: phase.color, fontFamily: "'DM Mono', monospace", marginBottom: "0.3rem" }}>3 exercises · under 60 seconds</div>
+        <div style={{ fontSize: "0.62rem", letterSpacing: "0.18em", textTransform: "uppercase", color: phase.color, fontFamily: "'DM Mono', monospace", marginBottom: "0.3rem" }}>{summary}</div>
         <div style={{ fontSize: "1.05rem", color: "#f0ece4", fontFamily: "Georgia, serif", lineHeight: 1.3 }}>Do these in sequence</div>
       </div>
       <ExerciseTabs exercises={exercises} active={active} setActive={setActive} phase={phase} />
@@ -71,13 +71,13 @@ const ShortBreakContent = ({ phase, exercises }) => {
   );
 };
 
-const LongBreakContent = ({ phase, exercises }) => {
+const LongBreakContent = ({ phase, exercises, summary }) => {
   const [active, setActive] = useState(0);
   const ex = exercises[active];
   return (
     <div>
       <div style={{ marginBottom: "1.15rem" }}>
-        <div style={{ fontSize: "0.62rem", letterSpacing: "0.18em", textTransform: "uppercase", color: phase.color, fontFamily: "'DM Mono', monospace", marginBottom: "0.3rem" }}>2 exercises · 7 minutes total</div>
+        <div style={{ fontSize: "0.62rem", letterSpacing: "0.18em", textTransform: "uppercase", color: phase.color, fontFamily: "'DM Mono', monospace", marginBottom: "0.3rem" }}>{summary}</div>
         <div style={{ fontSize: "1.05rem", color: "#f0ece4", fontFamily: "Georgia, serif", lineHeight: 1.3 }}>The rehab work</div>
       </div>
       <ExerciseTabs exercises={exercises} active={active} setActive={setActive} phase={phase} />
@@ -503,8 +503,8 @@ export default function AlignedFlow({ config, setConfig }) {
           {/* Content card — clicks here don't toggle timer */}
           <div onClick={(e) => e.stopPropagation()} style={{ background: "rgba(15,14,12,0.82)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: isMobile ? "1.25rem 1.15rem 1.1rem" : "1.75rem 1.75rem 1.5rem", boxShadow: `0 0 40px ${phase.color}10`, cursor: "default" }}>
             {phaseId === "work" && <WorkContent phase={phase} items={config.workItems} />}
-            {phaseId === "short" && <ShortBreakContent phase={phase} exercises={config.shortBreakExercises} />}
-            {phaseId === "long" && <LongBreakContent phase={phase} exercises={config.longBreakExercises} />}
+            {phaseId === "short" && <ShortBreakContent phase={phase} exercises={config.shortBreakExercises} summary={config.shortBreakSummary} />}
+            {phaseId === "long" && <LongBreakContent phase={phase} exercises={config.longBreakExercises} summary={config.longBreakSummary} />}
           </div>
         </div>
       </div>
