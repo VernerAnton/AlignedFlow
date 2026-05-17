@@ -332,6 +332,7 @@ export default function EveningRoutine({ config, setConfig }) {
   const resetAnimatingRef = useRef(false);
   const rafRef = useRef(null);
   const isPlayingRef = useRef(false);
+  const startPulseTickRef = useRef(null); // resets each countdown second for pulse sync
   const [pulseOpacity, setPulseOpacity] = useState(0);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
@@ -398,6 +399,12 @@ export default function EveningRoutine({ config, setConfig }) {
     return () => clearInterval(id);
   }, [isPlaying, phase]);
 
+  // Reset pulse clock each countdown tick so RAF can sync to it
+  useEffect(() => {
+    if (phase !== "starting" || startCountdown === null || startCountdown === 0) return;
+    startPulseTickRef.current = performance.now();
+  }, [startCountdown, phase]);
+
   // When countdown hits 0, kick off the real exercise
   useEffect(() => {
     if (phase !== "starting" || startCountdown !== 0) return;
@@ -460,8 +467,11 @@ export default function EveningRoutine({ config, setConfig }) {
         const eased = resetAnimatingRef.current ? 1 - Math.pow(1 - t, 3) : t;
         const interpolated = segmentFromRef.current + (segmentToRef.current - segmentFromRef.current) * eased;
         setSmoothFillPct(interpolated);
-        // Pulse: sine curve over each second
-        const pulse = (Math.sin(t * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+        // Pulse: sine curve over each second (use wall-clock for "starting" so every tick cycles)
+        const pulseT = phaseRef.current === "starting" && startPulseTickRef.current !== null
+          ? Math.min(1, (performance.now() - startPulseTickRef.current) / 1000)
+          : t;
+        const pulse = (Math.sin(pulseT * Math.PI * 2 - Math.PI / 2) + 1) / 2;
         setPulseOpacity(pulse);
         if (t >= 1 && resetAnimatingRef.current) {
           resetAnimatingRef.current = false;
