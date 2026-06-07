@@ -299,6 +299,13 @@ export default function AlignedFlow({ config, setConfig }) {
   useEffect(() => { workCountRef.current = workCount; }, [workCount]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
+  // Reset timeLeft when duration for the current phase changes (slider is disabled while playing)
+  useEffect(() => {
+    if (!isPlaying) {
+      setTimeLeft(durations[phaseId] * 60);
+    }
+  }, [durations[phaseId]]);
+
   // ── Smooth fill interpolation (ported from evening mode) ───────────────
   const [smoothFillPct, setSmoothFillPct] = useState(100);
   const segmentStartRef = useRef(null);
