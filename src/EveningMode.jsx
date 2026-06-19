@@ -80,6 +80,10 @@ const pulseKeyframes = `
   50% { opacity: 0.2; transform: scale(1.06); }
   100% { opacity: 0; transform: scale(1.12); }
 }
+@keyframes doneFadeIn {
+  from { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
+  to   { opacity: 1; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+}
 `;
 
 function SwitchRings({ switchSecsLeft, color, cardRect, isMobile, railW }) {
@@ -618,17 +622,6 @@ export default function EveningRoutine({ config, setConfig }) {
       {/* Card stack */}
       <div style={{ position: "absolute", top: 0, left: 0, right: railW, height: containerH, overflow: subPhase === "switching" ? "visible" : "hidden", zIndex: 5 }}>
 
-        {/* Done screen */}
-        {phase === "done" && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20 }}>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "0.62rem", letterSpacing: "0.2em", textTransform: "uppercase", color: COLOR, fontFamily: "'DM Mono', monospace", marginBottom: "0.6rem" }}>Complete</div>
-              <div style={{ fontSize: "1.4rem", color: "#f0ece4", marginBottom: "0.4rem" }}>Evening routine done.</div>
-              <div style={{ fontSize: "0.78rem", color: "#3a3a3a", fontFamily: "'DM Mono', monospace" }}>Sleep well.</div>
-            </div>
-          </div>
-        )}
-
         {/* Transition countdown pill — positioned above the active card */}
         {phase === "transition" && cardRect && (
           <div style={{ position: "fixed", top: cardRect.top - 36, left: "50%", transform: "translateX(-50%)", zIndex: 15, pointerEvents: "none" }}>
@@ -798,6 +791,25 @@ export default function EveningRoutine({ config, setConfig }) {
           isMobile={isMobile}
           railW={railW}
         />
+      )}
+
+      {/* Done screen — full-screen blurred backdrop over everything except the controls */}
+      {phase === "done" && (
+        <div style={{
+          position: "absolute", inset: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 15,
+          background: "rgba(15,14,12,0.55)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          animation: "doneFadeIn 0.6s ease forwards",
+        }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: "0.62rem", letterSpacing: "0.2em", textTransform: "uppercase", color: COLOR, fontFamily: "'DM Mono', monospace", marginBottom: "0.6rem" }}>Complete</div>
+            <div style={{ fontSize: "1.4rem", color: "#f0ece4", marginBottom: "0.4rem" }}>Evening routine done.</div>
+            <div style={{ fontSize: "0.78rem", color: "#6a665e", fontFamily: "'DM Mono', monospace" }}>Sleep well.</div>
+          </div>
+        </div>
       )}
 
       {/* Floating controls — centered horizontally within the fill area (left edge to rail) */}
