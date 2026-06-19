@@ -29,16 +29,27 @@ function playTone(ctx, freq, startTime, duration, type = 'sine', gainValue = 0.3
   osc.stop(startTime + duration + 0.01);
 }
 
-// Work session start — bright rising arpeggio (C4 → E4 → G4 → C5)
-// Energising, upward movement
-export function playWorkSound(muted) {
+// Universal start sound — bright rising arpeggio (C4 → E4 → G4 → C5)
+// Energising, upward movement. Fires on every manual start across work,
+// short break and long break. Gain reduced 30% from the original work cue.
+export function playStartSound(muted) {
   if (muted) return;
   const ctx = getAudioContext();
   const now = ctx.currentTime;
   const notes = [261.63, 329.63, 392.00, 523.25];
   notes.forEach((freq, i) => {
-    playTone(ctx, freq, now + i * 0.10, 0.45, 'sine', 0.28, 0.02, 0.20);
+    playTone(ctx, freq, now + i * 0.10, 0.45, 'sine', 0.196, 0.02, 0.20);
   });
+}
+
+// Universal stop sound — soft two-note descending tone (G4 → C4), triangle
+// Quieter and lower than the start cue; signals winding down / pausing.
+export function playStopSound(muted) {
+  if (muted) return;
+  const ctx = getAudioContext();
+  const now = ctx.currentTime;
+  playTone(ctx, 392.00, now, 0.18, 'triangle', 0.16, 0.01, 0.12);        // G4
+  playTone(ctx, 261.63, now + 0.14, 0.26, 'triangle', 0.16, 0.01, 0.18); // C4
 }
 
 // Short break start — soft descending chime (G4 → E4 → C4)

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { playWorkSound, playShortBreakSound, playLongBreakSound } from "./sounds";
+import { playStartSound, playStopSound, playShortBreakSound, playLongBreakSound } from "./sounds";
 import { sendNotification } from "./notifications";
 import { computePhaseDim } from "./dataStore";
 
@@ -450,7 +450,7 @@ export default function AlignedFlow({ config, setConfig }) {
       // Break finished → back to work
       setPhaseId("work"); phaseIdRef.current = "work";
       setTimeLeft(durationsRef.current.work * 60);
-      playWorkSound(mutedRef.current);
+      playStartSound(mutedRef.current);
       sendNotification("Work Session", "Time to focus!");
     }
   }, [timeLeft, isPlaying]);
@@ -470,10 +470,9 @@ export default function AlignedFlow({ config, setConfig }) {
 
   const onPlayPause = () => {
     setIsPlaying((p) => {
-      // Play work sound when starting (not resuming from pause mid-phase)
-      if (!p && phaseIdRef.current === "work") {
-        playWorkSound(mutedRef.current);
-      }
+      // Universal start/stop cues — fire in every phase (work, short, long)
+      if (!p) playStartSound(mutedRef.current);
+      else playStopSound(mutedRef.current);
       return !p;
     });
   };
