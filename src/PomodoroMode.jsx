@@ -276,7 +276,7 @@ export default function AlignedFlow({ config, setConfig }) {
   }, [durations, loopsUntilLong, muted]);
 
   const PHASES = useMemo(() => {
-    const p = config.phases || { work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" }, short: { color: "#22c55e", tag: "SHORT BREAK", label: "Micro-Reset" }, long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" } };
+    const p = config.phases || { work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" }, short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" }, long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" } };
     return Object.fromEntries(
       Object.entries(p).map(([id, ph]) => [id, { id, ...ph, colorDim: computePhaseDim(ph.color) }])
     );
