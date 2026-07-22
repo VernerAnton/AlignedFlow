@@ -70,7 +70,7 @@ export const DEFAULT_CONFIG = {
   pomodoro: {
     phases: {
       work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" },
-      short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" },
+      short: { color: "#22c55e", tag: "SHORT BREAK", label: "Micro-Reset" },
       long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" },
     },
     workItems: [
