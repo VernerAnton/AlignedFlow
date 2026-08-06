@@ -100,9 +100,11 @@ export const DEFAULT_CONFIG = {
       { label: "Pec minor", title: "Pec Minor Doorframe Stretch", subtitle: "The structural intervention — do not skip this", time: "90 sec", steps: ["Stand in doorframe — forearms on frame at shoulder height, elbows at 90°", "Step one foot through the doorway, gently lean forward", "Feel stretch across chest — not in shoulder joint", "Hold 30 sec, breathing slowly", "Raise arms to Y-shape (~135°) — 30 sec", "Return to 90° for final 30 sec"], note: "No doorframe: corner of a room with both hands on walls, same movement." },
     ],
     durations: { work: 25, micro: 2, short: 5, long: 15 },
-    microEnabled: true,
-    loopsUntilShort: 2,  // focus blocks per short break (inner loop)
-    setsUntilLong: 2,    // short-break sets per long break (outer loop)
+    // Micro breaks are off by default — a standard pomodoro out of the box.
+    // Turning them on is what introduces the inner loop.
+    microEnabled: false,
+    loopsUntilShort: 3,  // focus blocks per short break (inner loop, micro on only)
+    setsUntilLong: 4,    // sets per long break (outer loop; == focus blocks when micro is off)
     muted: false,
   },
 };
@@ -111,8 +113,11 @@ export const DEFAULT_CONFIG = {
 
 // Brings a stored/imported pomodoro config up to the current shape in place.
 // Configs written before micro breaks existed carry a flat `loopsUntilLong`
-// (focus blocks until a long break). Those are split into the two-level loop
-// while preserving the total number of focus blocks per long break.
+// (focus blocks until a long break). Since those configs also predate the
+// micro toggle they land with micro off, where a set is exactly one focus
+// block — so the old count carries straight over and the cadence is
+// unchanged. Only a config that already opted into micro breaks needs the
+// count split across the two loops.
 export function migratePomodoro(p) {
   const d = DEFAULT_CONFIG.pomodoro;
   if (!p.phases) p.phases = structuredClone(d.phases);
@@ -129,8 +134,13 @@ export function migratePomodoro(p) {
   if (p.microEnabled == null) p.microEnabled = d.microEnabled;
   if (p.loopsUntilShort == null) p.loopsUntilShort = d.loopsUntilShort;
   if (p.setsUntilLong == null) {
-    const legacy = p.loopsUntilLong ?? d.loopsUntilShort * d.setsUntilLong;
-    p.setsUntilLong = Math.max(1, Math.round(legacy / p.loopsUntilShort));
+    if (p.loopsUntilLong == null) {
+      p.setsUntilLong = d.setsUntilLong;
+    } else if (p.microEnabled) {
+      p.setsUntilLong = Math.max(1, Math.round(p.loopsUntilLong / p.loopsUntilShort));
+    } else {
+      p.setsUntilLong = p.loopsUntilLong;
+    }
   }
   delete p.loopsUntilLong; // superseded by loopsUntilShort × setsUntilLong
   return p;

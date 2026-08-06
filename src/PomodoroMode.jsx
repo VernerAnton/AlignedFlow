@@ -211,6 +211,10 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
 
   const btnBase = { border: "1px solid rgba(255,255,255,0.18)", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" };
 
+  // With micro breaks off the phase is inert — keep it out of the UI so the
+  // default is an ordinary three-phase pomodoro.
+  const visiblePhases = Object.values(phases).filter((p) => p.id !== "micro" || microEnabled);
+
   return (
     <div ref={drawerRef} style={{ position: "fixed", bottom: 0, left: `calc(50% + ${fillOffset / 2}px)`, transform: "translateX(-50%)", zIndex: 20, pointerEvents: open ? "auto" : "none" }}>
       {/* Drawer panel */}
@@ -267,7 +271,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
           <div style={{ marginBottom: "1rem" }}>
             <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.5rem" }}>PHASE</div>
             <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
-              {Object.values(phases).map((p) => (
+              {visiblePhases.map((p) => (
                 <button key={p.id} onClick={() => setPhaseId(p.id)} disabled={isPlaying} style={{
                   padding: "0.4rem 0.8rem",
                   borderRadius: "5px",
@@ -288,7 +292,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
           </div>
 
           {/* Duration settings */}
-          {Object.values(phases).map((p) => {
+          {visiblePhases.map((p) => {
             const [min, max] = DURATION_RANGES[p.id] || [1, 30];
             return (
               <div key={p.id} style={{ marginBottom: "0.7rem" }}>
@@ -353,13 +357,22 @@ export default function AlignedFlow({ config, setConfig }) {
   const [timeLeft, setTimeLeft] = useState(() => (config.durations?.work || 25) * 60);
   // Focus blocks completed within the current long-break cycle (resets at each long break)
   const [workCount, setWorkCount] = useState(0);
-  const [microEnabled, setMicroEnabled] = useState(() => config.microEnabled ?? true);
-  const [loopsUntilShort, setLoopsUntilShort] = useState(() => config.loopsUntilShort ?? 2);
-  const [setsUntilLong, setSetsUntilLong] = useState(() => config.setsUntilLong ?? 2);
+  const [microEnabled, setMicroEnabled] = useState(() => config.microEnabled ?? false);
+  const [loopsUntilShort, setLoopsUntilShort] = useState(() => config.loopsUntilShort ?? 3);
+  const [setsUntilLong, setSetsUntilLong] = useState(() => config.setsUntilLong ?? 4);
   const [muted, setMuted] = useState(() => config.muted ?? false);
   const mutedRef = useRef(config.muted ?? false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
-  const toggleMicro = () => { setMicroEnabled(m => !m); setWorkCount(0); workCountRef.current = 0; };
+
+  const toggleMicro = () => {
+    const next = !microEnabled;
+    setMicroEnabled(next);
+    // The cycle length changes underneath, so restart the count rather than
+    // leaving the indicator pointing at a block that no longer exists.
+    setWorkCount(0); workCountRef.current = 0;
+    // Micro disappears from the phase list when off — don't strand the user on it.
+    if (!next && phaseId === "micro") handlePhaseChange("work");
+  };
 
   // With micro breaks off, every focus block ends in a short break — the
   // original single-loop behaviour.
