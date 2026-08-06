@@ -132,6 +132,17 @@ export function playExerciseCompleteSound(muted) {
   playTone(ctx, 392.00, now + 0.22, 0.25, 'triangle', 0.18, 0.02, 0.15);
 }
 
+// Exercise start — bright rising two-note ping. Marks "go" at the end of the
+// get-into-position countdown. Higher and louder than the switch/complete cues
+// so the handoff between exercises is unmistakable.
+export function playExerciseStartSound(muted) {
+  if (muted) return;
+  const ctx = getAudioContext();
+  const now = ctx.currentTime;
+  playTone(ctx, 659.25, now, 0.16, 'triangle', 0.30, 0.01, 0.10);        // E5
+  playTone(ctx, 987.77, now + 0.13, 0.30, 'sine', 0.26, 0.01, 0.18);     // B5
+}
+
 // Unlock audio context on first user interaction
 export function unlockAudio() {
   getAudioContext();

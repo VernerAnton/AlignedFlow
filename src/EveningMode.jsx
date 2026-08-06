@@ -1,9 +1,11 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
-import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playDoneSound } from "./sounds";
+import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playExerciseStartSound, playDoneSound } from "./sounds";
 import { sendNotification } from "./notifications";
 import { computeSectionColors } from "./dataStore";
 
 const SWITCH_RING_COUNT = 5;
+// Final seconds of the get-into-position gap that show rings + a 3/2/1 number
+const TRANSITION_RING_COUNT = 3;
 
 function getEffectiveDuration(ex, switchBuffer) {
   return ex.bilateral ? ex.duration + switchBuffer : ex.duration;
@@ -231,6 +233,14 @@ export default function EveningRoutine({ config, setConfig }) {
     ? timeLeft - switchWindow.end
     : 0;
 
+  // Get-into-position countdown — the final seconds of the transition gap.
+  // Derived from the existing timeLeft tick, so no extra timer is needed.
+  // Clamped in case an imported config has a transitionTime below the ring count.
+  const transitionRingCount = Math.min(TRANSITION_RING_COUNT, config.transitionTime);
+  const transitionCountdown = phase === "transition" && timeLeft > 0 && timeLeft <= transitionRingCount
+    ? timeLeft
+    : 0;
+
   // ── Sound effects for bilateral switch ────────────────────────────────
   const prevSubPhaseRef = useRef(null);
 
@@ -293,13 +303,13 @@ export default function EveningRoutine({ config, setConfig }) {
     window.addEventListener("resize", updateRect);
     // Update after card transitions settle, and re-measure periodically during switching
     const t = setTimeout(updateRect, 1000);
-    const interval = subPhase === "switching" ? setInterval(updateRect, 500) : null;
+    const interval = subPhase === "switching" || phase === "transition" ? setInterval(updateRect, 500) : null;
     return () => {
       window.removeEventListener("resize", updateRect);
       clearTimeout(t);
       if (interval) clearInterval(interval);
     };
-  }, [index, subPhase]);
+  }, [index, subPhase, phase]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
 
@@ -415,7 +425,7 @@ export default function EveningRoutine({ config, setConfig }) {
     setPhase("exercise"); phaseRef.current = "exercise";
     setTimeLeft(getEffectiveDuration(exercises[index], switchBuffer));
     setStartCountdown(null);
-    playSide2Chime(mutedRef.current);
+    playExerciseStartSound(mutedRef.current);
   }, [startCountdown, phase]);
 
   // Ring tone on each countdown tick
@@ -423,6 +433,12 @@ export default function EveningRoutine({ config, setConfig }) {
     if (!isPlaying || phase !== "starting" || startCountdown === null || startCountdown === 0) return;
     playRingTone(mutedRef.current);
   }, [startCountdown]);
+
+  // Ring tone on each tick of the get-into-position countdown (3 → 2 → 1)
+  useEffect(() => {
+    if (!isPlaying || phase !== "transition" || transitionCountdown <= 0) return;
+    playRingTone(mutedRef.current);
+  }, [timeLeft]);
 
   // When timeLeft changes (new second tick), set up the next interpolation segment
   useEffect(() => {
@@ -509,6 +525,7 @@ export default function EveningRoutine({ config, setConfig }) {
     } else if (phaseRef.current === "transition") {
       setPhase("exercise"); phaseRef.current = "exercise";
       setTimeLeft(getEffectiveDuration(exercises[indexRef.current], switchBuffer));
+      playExerciseStartSound(mutedRef.current);
     }
   }, [timeLeft, isPlaying]);
 
@@ -620,10 +637,11 @@ export default function EveningRoutine({ config, setConfig }) {
       <TimerRail timeLeft={timeLeft} totalDuration={totalDuration} isMobile={isMobile} color={COLOR} />
 
       {/* Card stack */}
-      <div style={{ position: "absolute", top: 0, left: 0, right: railW, height: containerH, overflow: subPhase === "switching" ? "visible" : "hidden", zIndex: 5 }}>
+      <div style={{ position: "absolute", top: 0, left: 0, right: railW, height: containerH, overflow: subPhase === "switching" || transitionCountdown > 0 ? "visible" : "hidden", zIndex: 5 }}>
 
-        {/* Transition countdown pill — positioned above the active card */}
-        {phase === "transition" && cardRect && (
+        {/* Transition countdown pill — positioned above the active card.
+            Hidden during the final ring countdown, where the big number takes over. */}
+        {phase === "transition" && transitionCountdown === 0 && cardRect && (
           <div style={{ position: "fixed", top: cardRect.top - 36, left: "50%", transform: "translateX(-50%)", zIndex: 15, pointerEvents: "none" }}>
             <div style={{ fontSize: "0.58rem", letterSpacing: "0.15em", textTransform: "uppercase", fontFamily: "'DM Mono', monospace", color: `${COLOR}88`, padding: "0.25rem 0.75rem", border: `1px solid ${COLOR}28`, borderRadius: 20, background: "rgba(15,14,12,0.88)", whiteSpace: "nowrap" }}>
               Get into position — {timeLeft}s
@@ -676,6 +694,9 @@ export default function EveningRoutine({ config, setConfig }) {
 
           const isSwitching = isCurrent && subPhase === "switching";
           const isStarting  = isCurrent && phase === "starting";
+          // Final seconds of the get-into-position gap — same treatment as "Get Ready"
+          const isCountingIn = isCurrent && transitionCountdown > 0;
+          const isCued = isSwitching || isStarting || isCountingIn;
 
           return (
             <div key={ci} ref={isCurrent ? cardRef : null} style={{
@@ -685,17 +706,18 @@ export default function EveningRoutine({ config, setConfig }) {
               maxWidth: 560,
               ...((!isMobile) && { left: 7, right: 0, marginLeft: "auto", marginRight: "auto" }),
               maxHeight: isCurrent ? MAX_CARD_H : undefined,
-              overflowY: isCurrent ? "auto" : "hidden",
               transform: `translateY(${ty}px) scale(${scale})`,
               transformOrigin: "center top",
               transition: `transform ${dur} ${ease}, opacity ${dur} ${ease}`,
               opacity: opac,
               zIndex: 10 - Math.abs(rel),
               pointerEvents: isCurrent ? "auto" : "none",
-              overflow: isSwitching || isStarting ? "visible" : "hidden",
+              // Single overflow property — a sibling overflowY was being clobbered
+              // by this shorthand anyway, and React warns on every cue toggle
+              overflow: isCued ? "visible" : "hidden",
             }}>
               {/* Glow overlay — opacity driven by RAF loop, synced to ring dissolves */}
-              {(isSwitching || isStarting) && (
+              {isCued && (
                 <div style={{
                   position: "absolute", inset: 0, borderRadius: 10,
                   boxShadow: `0 0 30px 10px ${COLOR}, 0 0 60px 22px ${COLOR}80, 0 0 95px 38px ${COLOR}40`,
@@ -709,14 +731,14 @@ export default function EveningRoutine({ config, setConfig }) {
                 backdropFilter: "blur(8px)",
                 border: `1px solid ${isCurrent ? "rgba(255,255,255,0.09)" : "rgba(255,255,255,0.04)"}`,
                 borderRadius: 10,
-                boxShadow: isCurrent && !isSwitching && !isStarting ? `0 0 40px ${COLOR}15, 0 2px 20px rgba(0,0,0,0.3)` : "0 2px 12px rgba(0,0,0,0.2)",
+                boxShadow: isCurrent && !isCued ? `0 0 40px ${COLOR}15, 0 2px 20px rgba(0,0,0,0.3)` : "0 2px 12px rgba(0,0,0,0.2)",
                 overflow: "hidden",
               }}>
-              {/* Exercise content — dims during switch or start countdown */}
+              {/* Exercise content — dims during switch, start countdown or get-into-position countdown */}
               <div style={{
-                opacity: isSwitching || isStarting ? 0.15 : 1,
+                opacity: isCued ? 0.15 : 1,
                 transition: "opacity 0.5s ease",
-                filter: isSwitching || isStarting ? "blur(1px)" : "none",
+                filter: isCued ? "blur(1px)" : "none",
               }}>
                 <ExerciseCard
                   ex={exercises[ci]}
@@ -745,8 +767,9 @@ export default function EveningRoutine({ config, setConfig }) {
                 </div>
               )}
 
-              {/* GET READY overlay — shown during 5-second start countdown */}
-              {isStarting && (
+              {/* GET READY overlay — the opening 5-second countdown and the
+                  final seconds of the get-into-position gap share this treatment */}
+              {(isStarting || isCountingIn) && (
                 <div style={{
                   position: "absolute", inset: 0,
                   display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -761,7 +784,7 @@ export default function EveningRoutine({ config, setConfig }) {
                   <div style={{
                     fontSize: "2rem", fontFamily: "'DM Mono', monospace", color: COLOR, opacity: 0.6,
                   }}>
-                    {startCountdown}
+                    {isStarting ? startCountdown : transitionCountdown}
                   </div>
                 </div>
               )}
@@ -786,6 +809,17 @@ export default function EveningRoutine({ config, setConfig }) {
       {phase === "starting" && cardRect && (
         <SwitchRings
           switchSecsLeft={startCountdown ?? 0}
+          color={COLOR}
+          cardRect={cardRect}
+          isMobile={isMobile}
+          railW={railW}
+        />
+      )}
+
+      {/* Get-into-position rings — same component, driven by the 3-2-1 countdown */}
+      {transitionCountdown > 0 && cardRect && (
+        <SwitchRings
+          switchSecsLeft={transitionCountdown}
           color={COLOR}
           cardRect={cardRect}
           isMobile={isMobile}
