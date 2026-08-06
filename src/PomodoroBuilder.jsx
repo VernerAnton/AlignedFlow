@@ -7,13 +7,15 @@ const btnSmall = { border: "1px solid rgba(255,255,255,0.15)", background: "tran
 const btnDanger = { ...btnSmall, borderColor: "rgba(200,80,80,0.4)", color: "#c85050" };
 const labelStyle = { display: "block", fontSize: "0.55rem", letterSpacing: "0.1em", color: "#555", marginBottom: "0.2rem", textTransform: "uppercase" };
 
-const PHASE_IDS = ["work", "short", "long"];
-const PHASE_LABELS = { work: "Work", short: "Short Break", long: "Long Break" };
+const PHASE_IDS = ["work", "micro", "short", "long"];
+const PHASE_LABELS = { work: "Work", micro: "Micro Break", short: "Short Break", long: "Long Break" };
 
 export default function PomodoroBuilder({ config, setConfig, onBack }) {
   const [pomo, setPomo] = useState(() => ({
     ...config.pomodoro,
-    phases: config.pomodoro.phases || structuredClone(DEFAULT_CONFIG.pomodoro.phases),
+    // Merged so a config saved before a phase existed still opens cleanly
+    phases: { ...structuredClone(DEFAULT_CONFIG.pomodoro.phases), ...(config.pomodoro.phases || {}) },
+    microBreakExercises: config.pomodoro.microBreakExercises || structuredClone(DEFAULT_CONFIG.pomodoro.microBreakExercises),
   }));
   const [tab, setTab] = useState("work");
   const [expandedItem, setExpandedItem] = useState(null);
@@ -36,6 +38,7 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
     const messages = {
       phases: "Reset phase colors & names to defaults?",
       workItems: "Reset work checklist to defaults?",
+      microBreakExercises: "Reset micro break resets to defaults?",
       shortBreakExercises: "Reset short break exercises to defaults?",
       longBreakExercises: "Reset long break exercises to defaults?",
       settings: "Reset timer durations, loops, and muted to defaults?",
@@ -47,7 +50,9 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
     if (scope === "everything") {
       setPomo(structuredClone(defaults));
     } else if (scope === "settings") {
-      setPomo(prev => ({ ...prev, durations: structuredClone(defaults.durations), loopsUntilLong: defaults.loopsUntilLong, muted: defaults.muted ?? false }));
+      setPomo(prev => ({ ...prev, durations: structuredClone(defaults.durations), microEnabled: defaults.microEnabled, loopsUntilShort: defaults.loopsUntilShort, setsUntilLong: defaults.setsUntilLong, muted: defaults.muted ?? false }));
+    } else if (scope === "microBreakExercises") {
+      setPomo(prev => ({ ...prev, microBreakExercises: structuredClone(defaults.microBreakExercises), microBreakSummary: defaults.microBreakSummary }));
     } else if (scope === "shortBreakExercises") {
       setPomo(prev => ({ ...prev, shortBreakExercises: structuredClone(defaults.shortBreakExercises), shortBreakSummary: defaults.shortBreakSummary }));
     } else if (scope === "longBreakExercises") {
@@ -111,6 +116,7 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
                 {[
                   { scope: "phases", label: "Phase appearance" },
                   { scope: "workItems", label: "Work checklist" },
+                  { scope: "microBreakExercises", label: "Micro break resets" },
                   { scope: "shortBreakExercises", label: "Short break exercises" },
                   { scope: "longBreakExercises", label: "Long break exercises" },
                   { scope: "settings", label: "Timer settings" },
@@ -138,7 +144,7 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
       <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); setExpandedItem(null); }} style={{
-            flex: 1, padding: "0.55rem 0.5rem", border: "none", background: "transparent", cursor: tab === t.id ? "default" : "pointer",
+            flex: 1, padding: "0.55rem 0.3rem", border: "none", background: "transparent", cursor: tab === t.id ? "default" : "pointer",
             fontFamily: FONT, fontSize: "0.55rem", letterSpacing: "0.1em",
             color: tab === t.id ? t.color : "rgba(255,255,255,0.25)",
             borderBottom: tab === t.id ? `2px solid ${t.color}` : "2px solid transparent",
@@ -176,6 +182,16 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
         {tab === "work" && (
           <WorkEditor items={pomo.workItems} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
             onChange={items => setPomo(prev => ({ ...prev, workItems: items }))} />
+        )}
+        {tab === "micro" && (
+          <>
+            <div style={{ marginBottom: "1rem" }}>
+              <label style={labelStyle}>Summary line (shown above resets)</label>
+              <input value={pomo.microBreakSummary || ""} onChange={e => setPomo(prev => ({ ...prev, microBreakSummary: e.target.value }))} style={inputStyle} placeholder="e.g. 3 quick resets · pick one" />
+            </div>
+            <ExerciseListEditor exercises={pomo.microBreakExercises} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
+              onChange={exercises => setPomo(prev => ({ ...prev, microBreakExercises: exercises }))} hasSubtitle={false} hasNote={false} />
+          </>
         )}
         {tab === "short" && (
           <>
