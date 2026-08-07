@@ -15,12 +15,12 @@ function useWindowWidth() {
 
 // ── Content panels ──────────────────────────────────────────────────────────
 
-const WorkContent = ({ phase, items }) => {
+const WorkContent = ({ phase, items, summary, heading }) => {
   return (
     <div>
       <div style={{ marginBottom: "1.25rem" }}>
-        <div style={{ fontSize: "0.62rem", letterSpacing: "0.18em", textTransform: "uppercase", color: phase.color, fontFamily: "'DM Mono', monospace", marginBottom: "0.3rem" }}>Posture setup</div>
-        <div style={{ fontSize: "1.05rem", color: "#f0ece4", fontFamily: "Georgia, serif", lineHeight: 1.3 }}>Check in before you start</div>
+        <div style={{ fontSize: "0.62rem", letterSpacing: "0.18em", textTransform: "uppercase", color: phase.color, fontFamily: "'DM Mono', monospace", marginBottom: "0.3rem" }}>{summary}</div>
+        <div style={{ fontSize: "1.05rem", color: "#f0ece4", fontFamily: "Georgia, serif", lineHeight: 1.3 }}>{heading}</div>
       </div>
       {items.map((item) => (
         <div key={item.id} style={{ display: "flex", gap: "0.85rem", alignItems: "flex-start", padding: "0.55rem 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
@@ -73,7 +73,7 @@ const SimpleBreakContent = ({ phase, exercises, summary, heading }) => {
   );
 };
 
-const LongBreakContent = ({ phase, exercises, summary }) => {
+const LongBreakContent = ({ phase, exercises, summary, heading }) => {
   const [active, setActive] = useState(0);
   if (!exercises || exercises.length === 0) return null;
   const ex = exercises[active] || exercises[0];
@@ -81,7 +81,7 @@ const LongBreakContent = ({ phase, exercises, summary }) => {
     <div>
       <div style={{ marginBottom: "1.15rem" }}>
         <div style={{ fontSize: "0.62rem", letterSpacing: "0.18em", textTransform: "uppercase", color: phase.color, fontFamily: "'DM Mono', monospace", marginBottom: "0.3rem" }}>{summary}</div>
-        <div style={{ fontSize: "1.05rem", color: "#f0ece4", fontFamily: "Georgia, serif", lineHeight: 1.3 }}>The rehab work</div>
+        <div style={{ fontSize: "1.05rem", color: "#f0ece4", fontFamily: "Georgia, serif", lineHeight: 1.3 }}>{heading}</div>
       </div>
       <ExerciseTabs exercises={exercises} active={active} setActive={setActive} phase={phase} />
       <div style={{ marginBottom: "0.85rem" }}>
@@ -633,10 +633,10 @@ export default function AlignedFlow({ config, setConfig }) {
         <div style={{ width: "100%", maxWidth: "520px" }}>
           {/* Content card — clicks here don't toggle timer */}
           <div className="pomo-card" onClick={(e) => e.stopPropagation()} style={{ background: "rgba(15,14,12,0.82)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: isMobile ? "1.25rem 1.15rem 1.1rem" : "1.75rem 1.75rem 1.5rem", boxShadow: `0 0 40px ${phase.color}10`, cursor: "default", maxHeight: isMobile ? "calc(100vh - 7.5rem)" : "calc(100vh - 8.5rem)", overflowY: "auto", msOverflowStyle: "none", scrollbarWidth: "none" }}>
-            {phaseId === "work" && <WorkContent phase={phase} items={config.workItems} />}
-            {phaseId === "micro" && <SimpleBreakContent phase={phase} exercises={config.microBreakExercises} summary={config.microBreakSummary} heading="Pick one, then straight back" />}
-            {phaseId === "short" && <SimpleBreakContent phase={phase} exercises={config.shortBreakExercises} summary={config.shortBreakSummary} heading="Do these in sequence" />}
-            {phaseId === "long" && <LongBreakContent phase={phase} exercises={config.longBreakExercises} summary={config.longBreakSummary} />}
+            {phaseId === "work" && <WorkContent phase={phase} items={config.workItems} summary={config.workSummary} heading={config.workHeading} />}
+            {phaseId === "micro" && <SimpleBreakContent phase={phase} exercises={config.microBreakExercises} summary={config.microBreakSummary} heading={config.microBreakHeading} />}
+            {phaseId === "short" && <SimpleBreakContent phase={phase} exercises={config.shortBreakExercises} summary={config.shortBreakSummary} heading={config.shortBreakHeading} />}
+            {phaseId === "long" && <LongBreakContent phase={phase} exercises={config.longBreakExercises} summary={config.longBreakSummary} heading={config.longBreakHeading} />}
           </div>
         </div>
       </div>

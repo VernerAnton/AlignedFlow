@@ -52,12 +52,14 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
       setPomo(structuredClone(defaults));
     } else if (scope === "settings") {
       setPomo(prev => ({ ...prev, durations: structuredClone(defaults.durations), microEnabled: defaults.microEnabled, loopsUntilShort: defaults.loopsUntilShort, setsUntilLong: defaults.setsUntilLong, muted: defaults.muted ?? false }));
+    } else if (scope === "workItems") {
+      setPomo(prev => ({ ...prev, workItems: structuredClone(defaults.workItems), workSummary: defaults.workSummary, workHeading: defaults.workHeading }));
     } else if (scope === "microBreakExercises") {
-      setPomo(prev => ({ ...prev, microBreakExercises: structuredClone(defaults.microBreakExercises), microBreakSummary: defaults.microBreakSummary }));
+      setPomo(prev => ({ ...prev, microBreakExercises: structuredClone(defaults.microBreakExercises), microBreakSummary: defaults.microBreakSummary, microBreakHeading: defaults.microBreakHeading }));
     } else if (scope === "shortBreakExercises") {
-      setPomo(prev => ({ ...prev, shortBreakExercises: structuredClone(defaults.shortBreakExercises), shortBreakSummary: defaults.shortBreakSummary }));
+      setPomo(prev => ({ ...prev, shortBreakExercises: structuredClone(defaults.shortBreakExercises), shortBreakSummary: defaults.shortBreakSummary, shortBreakHeading: defaults.shortBreakHeading }));
     } else if (scope === "longBreakExercises") {
-      setPomo(prev => ({ ...prev, longBreakExercises: structuredClone(defaults.longBreakExercises), longBreakSummary: defaults.longBreakSummary }));
+      setPomo(prev => ({ ...prev, longBreakExercises: structuredClone(defaults.longBreakExercises), longBreakSummary: defaults.longBreakSummary, longBreakHeading: defaults.longBreakHeading }));
     } else {
       setPomo(prev => ({ ...prev, [scope]: structuredClone(defaults[scope]) }));
     }
@@ -181,35 +183,49 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
         </div>
 
         {tab === "work" && (
-          <WorkEditor items={pomo.workItems} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
-            onChange={items => setPomo(prev => ({ ...prev, workItems: items }))} />
+          <>
+            <HeadingFields
+              summary={pomo.workSummary} summaryPlaceholder="e.g. Posture setup"
+              onSummary={v => setPomo(prev => ({ ...prev, workSummary: v }))}
+              heading={pomo.workHeading} headingPlaceholder="e.g. Check in before you start"
+              onHeading={v => setPomo(prev => ({ ...prev, workHeading: v }))}
+            />
+            <WorkEditor items={pomo.workItems} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
+              onChange={items => setPomo(prev => ({ ...prev, workItems: items }))} />
+          </>
         )}
         {tab === "micro" && (
           <>
-            <div style={{ marginBottom: "1rem" }}>
-              <label style={labelStyle}>Summary line (shown above resets)</label>
-              <input value={pomo.microBreakSummary || ""} onChange={e => setPomo(prev => ({ ...prev, microBreakSummary: e.target.value }))} style={inputStyle} placeholder="e.g. 3 quick resets · pick one" />
-            </div>
+            <HeadingFields
+              summary={pomo.microBreakSummary} summaryPlaceholder="e.g. 3 quick resets · pick one"
+              onSummary={v => setPomo(prev => ({ ...prev, microBreakSummary: v }))}
+              heading={pomo.microBreakHeading} headingPlaceholder="e.g. Pick one, then straight back"
+              onHeading={v => setPomo(prev => ({ ...prev, microBreakHeading: v }))}
+            />
             <ExerciseListEditor exercises={pomo.microBreakExercises} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
               onChange={exercises => setPomo(prev => ({ ...prev, microBreakExercises: exercises }))} hasSubtitle={false} hasNote={false} />
           </>
         )}
         {tab === "short" && (
           <>
-            <div style={{ marginBottom: "1rem" }}>
-              <label style={labelStyle}>Summary line (shown above exercises)</label>
-              <input value={pomo.shortBreakSummary || ""} onChange={e => setPomo(prev => ({ ...prev, shortBreakSummary: e.target.value }))} style={inputStyle} placeholder="e.g. 3 exercises · under 60 seconds" />
-            </div>
+            <HeadingFields
+              summary={pomo.shortBreakSummary} summaryPlaceholder="e.g. 3 exercises · under 60 seconds"
+              onSummary={v => setPomo(prev => ({ ...prev, shortBreakSummary: v }))}
+              heading={pomo.shortBreakHeading} headingPlaceholder="e.g. Do these in sequence"
+              onHeading={v => setPomo(prev => ({ ...prev, shortBreakHeading: v }))}
+            />
             <ExerciseListEditor exercises={pomo.shortBreakExercises} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
               onChange={exercises => setPomo(prev => ({ ...prev, shortBreakExercises: exercises }))} hasSubtitle={false} hasNote={false} />
           </>
         )}
         {tab === "long" && (
           <>
-            <div style={{ marginBottom: "1rem" }}>
-              <label style={labelStyle}>Summary line (shown above exercises)</label>
-              <input value={pomo.longBreakSummary || ""} onChange={e => setPomo(prev => ({ ...prev, longBreakSummary: e.target.value }))} style={inputStyle} placeholder="e.g. 2 exercises · 7 minutes total" />
-            </div>
+            <HeadingFields
+              summary={pomo.longBreakSummary} summaryPlaceholder="e.g. 2 exercises · 7 minutes total"
+              onSummary={v => setPomo(prev => ({ ...prev, longBreakSummary: v }))}
+              heading={pomo.longBreakHeading} headingPlaceholder="e.g. The rehab work"
+              onHeading={v => setPomo(prev => ({ ...prev, longBreakHeading: v }))}
+            />
             <ExerciseListEditor exercises={pomo.longBreakExercises} color={activeTab.color} expanded={expandedItem} setExpanded={setExpandedItem}
               onChange={exercises => setPomo(prev => ({ ...prev, longBreakExercises: exercises }))} hasSubtitle hasNote />
           </>
@@ -218,6 +234,23 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
         <div style={{ height: 80 }} />
       </div>
     </div>
+  );
+}
+
+// ── Eyebrow + heading (the two text lines shown above each phase's content) ──
+
+function HeadingFields({ summary, onSummary, summaryPlaceholder, heading, onHeading, headingPlaceholder }) {
+  return (
+    <>
+      <div style={{ marginBottom: "0.6rem" }}>
+        <label style={labelStyle}>Eyebrow (small caps line)</label>
+        <input value={summary || ""} onChange={e => onSummary(e.target.value)} style={inputStyle} placeholder={summaryPlaceholder} />
+      </div>
+      <div style={{ marginBottom: "1rem" }}>
+        <label style={labelStyle}>Heading</label>
+        <input value={heading || ""} onChange={e => onHeading(e.target.value)} style={inputStyle} placeholder={headingPlaceholder} />
+      </div>
+    </>
   );
 }
 

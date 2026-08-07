@@ -82,9 +82,17 @@ export const DEFAULT_CONFIG = {
       { id: "e", primary: "Neutral neck: double chin, then release 20–30%" },
       { id: "f", primary: "Phone: at eye level for anything over 30 seconds" },
     ],
+    // Eyebrow (small caps) + heading (serif) shown above each phase's content.
+    // Work's eyebrow was hardcoded until now; the others reused the "summary"
+    // name from before headings existed, so it stays for compatibility.
+    workSummary: "Posture setup",
+    workHeading: "Check in before you start",
     microBreakSummary: "3 quick resets · pick one",
+    microBreakHeading: "Pick one, then straight back",
     shortBreakSummary: "3 exercises · under 60 seconds",
+    shortBreakHeading: "Do these in sequence",
     longBreakSummary: "2 exercises · 7 minutes total",
+    longBreakHeading: "The rehab work",
     microBreakExercises: [
       { label: "Eyes", title: "20-20-20 gaze reset", time: "20 sec", steps: ["Look at something roughly 6 m away", "Soften the focus — let the eyes go lazy", "Blink slowly five times"] },
       { label: "Stand", title: "Stand & unload", time: "20 sec", steps: ["Stand up fully, reach both arms overhead", "Roll the shoulders back once, let them drop heavy", "Shift weight side to side twice"] },
@@ -123,9 +131,14 @@ export function migratePomodoro(p) {
   if (!p.phases) p.phases = structuredClone(d.phases);
   else if (!p.phases.micro) p.phases.micro = { ...d.phases.micro };
 
+  if (!p.workSummary) p.workSummary = d.workSummary;
+  if (!p.workHeading) p.workHeading = d.workHeading;
   if (!p.microBreakSummary) p.microBreakSummary = d.microBreakSummary;
+  if (!p.microBreakHeading) p.microBreakHeading = d.microBreakHeading;
   if (!p.shortBreakSummary) p.shortBreakSummary = d.shortBreakSummary;
+  if (!p.shortBreakHeading) p.shortBreakHeading = d.shortBreakHeading;
   if (!p.longBreakSummary) p.longBreakSummary = d.longBreakSummary;
+  if (!p.longBreakHeading) p.longBreakHeading = d.longBreakHeading;
   if (!Array.isArray(p.microBreakExercises)) p.microBreakExercises = structuredClone(d.microBreakExercises);
 
   if (!p.durations) p.durations = { ...d.durations };
