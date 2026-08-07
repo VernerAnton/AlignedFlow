@@ -106,10 +106,15 @@ const LongBreakContent = ({ phase, exercises, summary }) => {
 // One diamond per focus block in the current long-break cycle, split into sets
 // by a divider at each short break. Filled = done, ringed = current.
 // Falls back to a numeric readout once the cycle is too long to draw.
+const MAX_DRAWN_BLOCKS = 14;
+
 const CycleIndicator = ({ blocksPerSet, setsUntilLong, done, phases }) => {
   const total = blocksPerSet * setsUntilLong;
+  // Tighten up for longer cycles so they still fit a phone's width
+  const size = total > 9 ? 6 : 7;
+  const gap = total > 9 ? 3 : 4;
 
-  if (total > 10) {
+  if (total > MAX_DRAWN_BLOCKS) {
     return (
       <span style={{ fontSize: "0.55rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", color: "rgba(255,255,255,0.4)" }}>
         {Math.min(done + 1, total)}<span style={{ color: "rgba(255,255,255,0.2)" }}>/{total}</span>
@@ -118,13 +123,13 @@ const CycleIndicator = ({ blocksPerSet, setsUntilLong, done, phases }) => {
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+    <div style={{ display: "flex", alignItems: "center", gap }}>
       {Array.from({ length: total }, (_, i) => {
         const isDone = i < done;
         const isCurrent = i === done;
         const marks = [
           <div key={`b${i}`} style={{
-            width: 7, height: 7, transform: "rotate(45deg)", flexShrink: 0,
+            width: size, height: size, transform: "rotate(45deg)", flexShrink: 0,
             background: isDone ? phases.work.color : "transparent",
             border: `1px solid ${isDone || isCurrent ? phases.work.color : "rgba(255,255,255,0.22)"}`,
             opacity: isCurrent ? 1 : isDone ? 0.55 : 0.5,
@@ -135,7 +140,7 @@ const CycleIndicator = ({ blocksPerSet, setsUntilLong, done, phases }) => {
         // Divider after each completed set, except at the very end of the cycle
         const atSetEnd = (i + 1) % blocksPerSet === 0 && i + 1 < total;
         if (atSetEnd) {
-          marks.push(<div key={`s${i}`} style={{ width: 1, height: 9, background: phases.short.color, opacity: 0.45, margin: "0 1px", flexShrink: 0 }} />);
+          marks.push(<div key={`s${i}`} style={{ width: 1, height: size + 2, background: phases.short.color, opacity: 0.45, margin: "0 1px", flexShrink: 0 }} />);
         }
         return marks;
       })}
