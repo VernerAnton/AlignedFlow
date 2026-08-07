@@ -70,6 +70,7 @@ export const DEFAULT_CONFIG = {
   pomodoro: {
     phases: {
       work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" },
+      micro: { color: "#e8899e", tag: "MICRO", label: "Micro Break" },
       short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" },
       long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" },
     },
@@ -81,8 +82,14 @@ export const DEFAULT_CONFIG = {
       { id: "e", primary: "Neutral neck: double chin, then release 20–30%" },
       { id: "f", primary: "Phone: at eye level for anything over 30 seconds" },
     ],
+    microBreakSummary: "3 quick resets · pick one",
     shortBreakSummary: "3 exercises · under 60 seconds",
     longBreakSummary: "2 exercises · 7 minutes total",
+    microBreakExercises: [
+      { label: "Eyes", title: "20-20-20 gaze reset", time: "20 sec", steps: ["Look at something roughly 6 m away", "Soften the focus — let the eyes go lazy", "Blink slowly five times"] },
+      { label: "Stand", title: "Stand & unload", time: "20 sec", steps: ["Stand up fully, reach both arms overhead", "Roll the shoulders back once, let them drop heavy", "Shift weight side to side twice"] },
+      { label: "Breath", title: "Three-breath reset", time: "20 sec", steps: ["Inhale through the nose for 4", "Exhale slowly through the mouth for 6", "Three rounds — jaw and tongue loose"] },
+    ],
     shortBreakExercises: [
       { label: "Reset A", title: "Shoulder sequence", time: "20 sec", steps: ["Shrug both shoulders up to ears", "Roll them back — squeeze shoulder blades together", "Drop them down completely, let them fall heavy", "Repeat once more", "Widen collarbones, settle 10–20% back", "3 slow belly breaths"] },
       { label: "Reset B", title: "Neck de-bracing", time: "15 sec", steps: ["Sit tall, chin level", "Glide head straight back — subtle double chin, face stays level", "5 small nods from that retracted position", "Hold the last one 5 seconds, then release fully"] },
@@ -92,11 +99,52 @@ export const DEFAULT_CONFIG = {
       { label: "DCF", title: "DCF Wall Protocol", subtitle: "Deep Cervical Flexor — primary rehab exercise", time: "5 min · 10 reps", steps: ["Stand or sit with back of skull touching the wall", "Chin level — not lifted, not tucked", "Gently nod chin toward throat — double chin movement. Skull stays on wall.", "Hold 10 seconds. Sternocleidomastoid must stay soft.", "Release fully. Rest 5 seconds.", "Repeat for 10 reps."], note: "If the rope-like muscle on the side of your neck activates, the movement is too large. Reduce it." },
       { label: "Pec minor", title: "Pec Minor Doorframe Stretch", subtitle: "The structural intervention — do not skip this", time: "90 sec", steps: ["Stand in doorframe — forearms on frame at shoulder height, elbows at 90°", "Step one foot through the doorway, gently lean forward", "Feel stretch across chest — not in shoulder joint", "Hold 30 sec, breathing slowly", "Raise arms to Y-shape (~135°) — 30 sec", "Return to 90° for final 30 sec"], note: "No doorframe: corner of a room with both hands on walls, same movement." },
     ],
-    durations: { work: 25, short: 5, long: 15 },
-    loopsUntilLong: 4,
+    durations: { work: 25, micro: 2, short: 5, long: 15 },
+    // Micro breaks are off by default — a standard pomodoro out of the box.
+    // Turning them on is what introduces the inner loop.
+    microEnabled: false,
+    loopsUntilShort: 3,  // focus blocks per short break (inner loop, micro on only)
+    setsUntilLong: 4,    // sets per long break (outer loop; == focus blocks when micro is off)
     muted: false,
   },
 };
+
+// ── Migration ──
+
+// Brings a stored/imported pomodoro config up to the current shape in place.
+// Configs written before micro breaks existed carry a flat `loopsUntilLong`
+// (focus blocks until a long break). Since those configs also predate the
+// micro toggle they land with micro off, where a set is exactly one focus
+// block — so the old count carries straight over and the cadence is
+// unchanged. Only a config that already opted into micro breaks needs the
+// count split across the two loops.
+export function migratePomodoro(p) {
+  const d = DEFAULT_CONFIG.pomodoro;
+  if (!p.phases) p.phases = structuredClone(d.phases);
+  else if (!p.phases.micro) p.phases.micro = { ...d.phases.micro };
+
+  if (!p.microBreakSummary) p.microBreakSummary = d.microBreakSummary;
+  if (!p.shortBreakSummary) p.shortBreakSummary = d.shortBreakSummary;
+  if (!p.longBreakSummary) p.longBreakSummary = d.longBreakSummary;
+  if (!Array.isArray(p.microBreakExercises)) p.microBreakExercises = structuredClone(d.microBreakExercises);
+
+  if (!p.durations) p.durations = { ...d.durations };
+  else if (p.durations.micro == null) p.durations.micro = d.durations.micro;
+
+  if (p.microEnabled == null) p.microEnabled = d.microEnabled;
+  if (p.loopsUntilShort == null) p.loopsUntilShort = d.loopsUntilShort;
+  if (p.setsUntilLong == null) {
+    if (p.loopsUntilLong == null) {
+      p.setsUntilLong = d.setsUntilLong;
+    } else if (p.microEnabled) {
+      p.setsUntilLong = Math.max(1, Math.round(p.loopsUntilLong / p.loopsUntilShort));
+    } else {
+      p.setsUntilLong = p.loopsUntilLong;
+    }
+  }
+  delete p.loopsUntilLong; // superseded by loopsUntilShort × setsUntilLong
+  return p;
+}
 
 // ── Persistence ──
 
@@ -106,15 +154,7 @@ export function loadConfig() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.version === 1) {
-        if (!parsed.pomodoro.phases) {
-          parsed.pomodoro.phases = structuredClone(DEFAULT_CONFIG.pomodoro.phases);
-        }
-        if (!parsed.pomodoro.shortBreakSummary) {
-          parsed.pomodoro.shortBreakSummary = DEFAULT_CONFIG.pomodoro.shortBreakSummary;
-        }
-        if (!parsed.pomodoro.longBreakSummary) {
-          parsed.pomodoro.longBreakSummary = DEFAULT_CONFIG.pomodoro.longBreakSummary;
-        }
+        migratePomodoro(parsed.pomodoro);
         return parsed;
       }
     }
@@ -163,8 +203,7 @@ export function validateAndParseConfig(jsonString) {
     if (!Array.isArray(c.pomodoro.workItems)) return { ok: false, error: "Missing pomodoro work items" };
     if (!Array.isArray(c.pomodoro.shortBreakExercises)) return { ok: false, error: "Missing short break exercises" };
     if (!Array.isArray(c.pomodoro.longBreakExercises)) return { ok: false, error: "Missing long break exercises" };
-    if (!c.pomodoro.shortBreakSummary) c.pomodoro.shortBreakSummary = DEFAULT_CONFIG.pomodoro.shortBreakSummary;
-    if (!c.pomodoro.longBreakSummary) c.pomodoro.longBreakSummary = DEFAULT_CONFIG.pomodoro.longBreakSummary;
+    migratePomodoro(c.pomodoro);
     return { ok: true, config: c };
   } catch (e) {
     return { ok: false, error: "Invalid JSON" };

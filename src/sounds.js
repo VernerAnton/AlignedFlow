@@ -52,6 +52,16 @@ export function playStopSound(muted) {
   playTone(ctx, 261.63, now + 0.14, 0.26, 'triangle', 0.16, 0.01, 0.18); // C4
 }
 
+// Micro break start — two soft high notes (E5 → C5), very quiet and quick.
+// Deliberately lighter than the short break chime: a nudge, not an interruption.
+export function playMicroBreakSound(muted) {
+  if (muted) return;
+  const ctx = getAudioContext();
+  const now = ctx.currentTime;
+  playTone(ctx, 659.25, now, 0.16, 'sine', 0.11, 0.01, 0.10);        // E5
+  playTone(ctx, 523.25, now + 0.13, 0.24, 'sine', 0.10, 0.01, 0.16); // C5
+}
+
 // Short break start — soft descending chime (G4 → E4 → C4)
 // Calming, downward movement, gentler volume
 export function playShortBreakSound(muted) {

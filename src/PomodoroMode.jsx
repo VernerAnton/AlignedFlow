@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { playStartSound, playStopSound, playShortBreakSound, playLongBreakSound } from "./sounds";
+import { playStartSound, playStopSound, playMicroBreakSound, playShortBreakSound, playLongBreakSound } from "./sounds";
 import { sendNotification } from "./notifications";
 import { computePhaseDim } from "./dataStore";
 
@@ -52,14 +52,16 @@ const StepList = ({ steps, phase }) => steps.map((step, i) => (
   </div>
 ));
 
-const ShortBreakContent = ({ phase, exercises, summary }) => {
+// Shared by micro and short breaks — a tabbed list of label/title/time/steps.
+const SimpleBreakContent = ({ phase, exercises, summary, heading }) => {
   const [active, setActive] = useState(0);
-  const ex = exercises[active];
+  if (!exercises || exercises.length === 0) return null;
+  const ex = exercises[active] || exercises[0];
   return (
     <div>
       <div style={{ marginBottom: "1.15rem" }}>
         <div style={{ fontSize: "0.62rem", letterSpacing: "0.18em", textTransform: "uppercase", color: phase.color, fontFamily: "'DM Mono', monospace", marginBottom: "0.3rem" }}>{summary}</div>
-        <div style={{ fontSize: "1.05rem", color: "#f0ece4", fontFamily: "Georgia, serif", lineHeight: 1.3 }}>Do these in sequence</div>
+        <div style={{ fontSize: "1.05rem", color: "#f0ece4", fontFamily: "Georgia, serif", lineHeight: 1.3 }}>{heading}</div>
       </div>
       <ExerciseTabs exercises={exercises} active={active} setActive={setActive} phase={phase} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.9rem" }}>
@@ -73,7 +75,8 @@ const ShortBreakContent = ({ phase, exercises, summary }) => {
 
 const LongBreakContent = ({ phase, exercises, summary }) => {
   const [active, setActive] = useState(0);
-  const ex = exercises[active];
+  if (!exercises || exercises.length === 0) return null;
+  const ex = exercises[active] || exercises[0];
   return (
     <div>
       <div style={{ marginBottom: "1.15rem" }}>
@@ -94,6 +97,49 @@ const LongBreakContent = ({ phase, exercises, summary }) => {
           {ex.note}
         </div>
       )}
+    </div>
+  );
+};
+
+// ── Cycle indicator ──────────────────────────────────────────────────────────
+
+// One diamond per focus block in the current long-break cycle, split into sets
+// by a divider at each short break. Filled = done, ringed = current.
+// Falls back to a numeric readout once the cycle is too long to draw.
+const CycleIndicator = ({ blocksPerSet, setsUntilLong, done, phases }) => {
+  const total = blocksPerSet * setsUntilLong;
+
+  if (total > 10) {
+    return (
+      <span style={{ fontSize: "0.55rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", color: "rgba(255,255,255,0.4)" }}>
+        {Math.min(done + 1, total)}<span style={{ color: "rgba(255,255,255,0.2)" }}>/{total}</span>
+      </span>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      {Array.from({ length: total }, (_, i) => {
+        const isDone = i < done;
+        const isCurrent = i === done;
+        const marks = [
+          <div key={`b${i}`} style={{
+            width: 7, height: 7, transform: "rotate(45deg)", flexShrink: 0,
+            background: isDone ? phases.work.color : "transparent",
+            border: `1px solid ${isDone || isCurrent ? phases.work.color : "rgba(255,255,255,0.22)"}`,
+            opacity: isCurrent ? 1 : isDone ? 0.55 : 0.5,
+            boxShadow: isCurrent ? `0 0 5px ${phases.work.color}99` : "none",
+            transition: "all 0.3s",
+          }} />,
+        ];
+        // Divider after each completed set, except at the very end of the cycle
+        const atSetEnd = (i + 1) % blocksPerSet === 0 && i + 1 < total;
+        if (atSetEnd) {
+          marks.push(<div key={`s${i}`} style={{ width: 1, height: 9, background: phases.short.color, opacity: 0.45, margin: "0 1px", flexShrink: 0 }} />);
+        }
+        return marks;
+      })}
+      <div style={{ width: 3, height: 3, borderRadius: "50%", background: phases.long.color, opacity: 0.7, marginLeft: 1, flexShrink: 0 }} />
     </div>
   );
 };
@@ -143,7 +189,11 @@ const TimerRail = ({ phase, fillPct, isMobile, totalSeconds, timeLeft }) => {
 
 // ── Settings drawer ───────────────────────────────────────────────────────────
 
-const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, loopsUntilLong, setLoopsUntilLong, muted, toggleMuted }) => {
+// Slider bounds per phase. Work goes down to 5 min so short focus blocks
+// paired with micro breaks are actually reachable.
+const DURATION_RANGES = { work: [5, 50], micro: [1, 5], short: [1, 15], long: [1, 30] };
+
+const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, microEnabled, toggleMicro, loopsUntilShort, setLoopsUntilShort, setsUntilLong, setSetsUntilLong, blocksPerSet, workCount, muted, toggleMuted }) => {
   const [open, setOpen] = useState(false);
   const drawerRef = useRef(null);
   const drawerWidth = useWindowWidth();
@@ -160,6 +210,10 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
   }, [open]);
 
   const btnBase = { border: "1px solid rgba(255,255,255,0.18)", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" };
+
+  // With micro breaks off the phase is inert — keep it out of the UI so the
+  // default is an ordinary three-phase pomodoro.
+  const visiblePhases = Object.values(phases).filter((p) => p.id !== "micro" || microEnabled);
 
   return (
     <div ref={drawerRef} style={{ position: "fixed", bottom: 0, left: `calc(50% + ${fillOffset / 2}px)`, transform: "translateX(-50%)", zIndex: 20, pointerEvents: open ? "auto" : "none" }}>
@@ -183,15 +237,20 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             justifyContent: "center",
             cursor: "pointer",
             pointerEvents: "auto",
+            gap: 12,
+            padding: "0 0.9rem",
           }}
         >
-          <svg width="14" height="8" viewBox="0 0 14 8" style={{ opacity: 0.35, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.3s" }}>
+          <CycleIndicator blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} />
+          <svg width="14" height="8" viewBox="0 0 14 8" style={{ opacity: 0.35, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.3s", flexShrink: 0 }}>
             <polyline points="1,7 7,1 13,7" fill="none" stroke={open ? phase.color : "rgba(255,255,255,0.7)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
 
         {/* Drawer content */}
-        <div style={{ padding: "0 1.1rem 1.1rem", opacity: open ? 1 : 0, transition: "opacity 0.25s", pointerEvents: open ? "auto" : "none" }}>
+        {/* Scrolls rather than running off the top of short screens — the
+            fourth phase and the second loop control made this reachable. */}
+        <div style={{ padding: "0 1.1rem 1.1rem", opacity: open ? 1 : 0, transition: "opacity 0.25s", pointerEvents: open ? "auto" : "none", maxHeight: "calc(100vh - 120px)", overflowY: "auto", msOverflowStyle: "none", scrollbarWidth: "none" }}>
 
           {/* Play/Pause + Reset controls */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: "1rem" }}>
@@ -211,8 +270,8 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
           {/* Phase selector — manual override */}
           <div style={{ marginBottom: "1rem" }}>
             <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.5rem" }}>PHASE</div>
-            <div style={{ display: "flex", gap: "0.35rem" }}>
-              {Object.values(phases).map((p) => (
+            <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+              {visiblePhases.map((p) => (
                 <button key={p.id} onClick={() => setPhaseId(p.id)} disabled={isPlaying} style={{
                   padding: "0.4rem 0.8rem",
                   borderRadius: "5px",
@@ -233,22 +292,54 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
           </div>
 
           {/* Duration settings */}
-          {Object.values(phases).map((p) => (
-            <div key={p.id} style={{ marginBottom: "0.7rem" }}>
-              <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>{p.tag}</div>
+          {visiblePhases.map((p) => {
+            const [min, max] = DURATION_RANGES[p.id] || [1, 30];
+            return (
+              <div key={p.id} style={{ marginBottom: "0.7rem" }}>
+                <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>{p.tag}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <input type="range" min={min} max={max} value={durations[p.id]} onChange={(e) => setDurations((d) => ({ ...d, [p.id]: Number(e.target.value) }))} disabled={isPlaying} style={{ flex: 1, accentColor: p.color, colorScheme: "dark" }} />
+                  <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: p.color, minWidth: "32px" }}>{durations[p.id]}m</span>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Loop structure — inner (micro) and outer (long) */}
+          <div style={{ marginTop: "1rem", paddingTop: "0.85rem", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.6rem" }}>
+              <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace" }}>LOOP STRUCTURE</div>
+              <button onClick={toggleMicro} disabled={isPlaying} style={{ ...btnBase, padding: "0.28rem 0.65rem", borderRadius: 6, cursor: isPlaying ? "default" : "pointer", color: microEnabled ? phases.micro.color : "rgba(255,255,255,0.25)", fontSize: "0.52rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", border: `1px solid ${microEnabled ? phases.micro.color + "44" : "rgba(255,255,255,0.1)"}` }}>
+                {microEnabled ? "MICRO ON" : "MICRO OFF"}
+              </button>
+            </div>
+
+            {microEnabled && (
+              <div style={{ marginBottom: "0.7rem" }}>
+                <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>FOCUS BLOCKS PER SHORT BREAK</div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <input type="range" min={2} max={6} value={loopsUntilShort} onChange={(e) => setLoopsUntilShort(Number(e.target.value))} disabled={isPlaying} style={{ flex: 1, accentColor: phases.micro.color, colorScheme: "dark" }} />
+                  <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: phases.micro.color, minWidth: "20px" }}>{loopsUntilShort}</span>
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginBottom: "0.5rem" }}>
+              <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>SETS UNTIL LONG BREAK</div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <input type="range" min={p.id === "work" ? 15 : 1} max={p.id === "work" ? 50 : p.id === "long" ? 30 : 15} value={durations[p.id]} onChange={(e) => setDurations((d) => ({ ...d, [p.id]: Number(e.target.value) }))} disabled={isPlaying} style={{ flex: 1, accentColor: p.color, colorScheme: "dark" }} />
-                <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: p.color, minWidth: "32px" }}>{durations[p.id]}m</span>
+                <input type="range" min={1} max={6} value={setsUntilLong} onChange={(e) => setSetsUntilLong(Number(e.target.value))} disabled={isPlaying} style={{ flex: 1, accentColor: phases.long.color, colorScheme: "dark" }} />
+                <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: phases.long.color, minWidth: "20px" }}>{setsUntilLong}</span>
               </div>
             </div>
-          ))}
 
-          {/* Loops until long break */}
-          <div style={{ marginBottom: "0.3rem" }}>
-            <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>SESSIONS UNTIL LONG BREAK</div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input type="range" min={2} max={8} value={loopsUntilLong} onChange={(e) => setLoopsUntilLong(Number(e.target.value))} disabled={isPlaying} style={{ flex: 1, accentColor: phases.long.color, colorScheme: "dark" }} />
-              <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: phases.long.color, minWidth: "20px" }}>{loopsUntilLong}</span>
+            {/* Plain-language summary of the resulting cycle */}
+            <div style={{ fontSize: "0.53rem", lineHeight: 1.6, fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.32)" }}>
+              {microEnabled
+                ? <>{loopsUntilShort}× ({durations.work}m focus + {durations.micro}m micro) → {durations.short}m short break</>
+                : <>{durations.work}m focus → {durations.short}m short break</>}
+              <br />
+              ×{setsUntilLong} → {durations.long}m long break
+              <span style={{ color: "rgba(255,255,255,0.2)" }}> · {blocksPerSet * setsUntilLong} focus blocks per cycle</span>
             </div>
           </div>
         </div>
@@ -261,22 +352,40 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
 
 export default function AlignedFlow({ config, setConfig }) {
   const [phaseId, setPhaseId] = useState("work");
-  const [durations, setDurations] = useState(() => config.durations || { work: 25, short: 5, long: 15 });
+  const [durations, setDurations] = useState(() => config.durations || { work: 25, micro: 2, short: 5, long: 15 });
   const [isPlaying, setIsPlaying] = useState(false);
   const [timeLeft, setTimeLeft] = useState(() => (config.durations?.work || 25) * 60);
-  const [workCount, setWorkCount] = useState(0); // counts completed work sessions
-  const [loopsUntilLong, setLoopsUntilLong] = useState(() => config.loopsUntilLong ?? 4);
+  // Focus blocks completed within the current long-break cycle (resets at each long break)
+  const [workCount, setWorkCount] = useState(0);
+  const [microEnabled, setMicroEnabled] = useState(() => config.microEnabled ?? false);
+  const [loopsUntilShort, setLoopsUntilShort] = useState(() => config.loopsUntilShort ?? 3);
+  const [setsUntilLong, setSetsUntilLong] = useState(() => config.setsUntilLong ?? 4);
   const [muted, setMuted] = useState(() => config.muted ?? false);
   const mutedRef = useRef(config.muted ?? false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
 
+  const toggleMicro = () => {
+    const next = !microEnabled;
+    setMicroEnabled(next);
+    // The cycle length changes underneath, so restart the count rather than
+    // leaving the indicator pointing at a block that no longer exists.
+    setWorkCount(0); workCountRef.current = 0;
+    // Micro disappears from the phase list when off — don't strand the user on it.
+    if (!next && phaseId === "micro") handlePhaseChange("work");
+  };
+
+  // With micro breaks off, every focus block ends in a short break — the
+  // original single-loop behaviour.
+  const blocksPerSet = microEnabled ? loopsUntilShort : 1;
+  const blocksUntilLong = blocksPerSet * setsUntilLong;
+
   // Persist settings changes back to config
   useEffect(() => {
-    setConfig(prev => ({ ...prev, pomodoro: { ...prev.pomodoro, durations, loopsUntilLong, muted } }));
-  }, [durations, loopsUntilLong, muted]);
+    setConfig(prev => ({ ...prev, pomodoro: { ...prev.pomodoro, durations, microEnabled, loopsUntilShort, setsUntilLong, muted } }));
+  }, [durations, microEnabled, loopsUntilShort, setsUntilLong, muted]);
 
   const PHASES = useMemo(() => {
-    const p = config.phases || { work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" }, short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" }, long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" } };
+    const p = config.phases || { work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" }, micro: { color: "#e8899e", tag: "MICRO", label: "Micro Break" }, short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" }, long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" } };
     return Object.fromEntries(
       Object.entries(p).map(([id, ph]) => [id, { id, ...ph, colorDim: computePhaseDim(ph.color) }])
     );
@@ -433,18 +542,27 @@ export default function AlignedFlow({ config, setConfig }) {
     if (timeLeft !== 0 || !isPlaying) return;
 
     if (phaseIdRef.current === "work") {
+      // Two nested loops: micro breaks between focus blocks, a short break at
+      // the end of each set, a long break once the last set of the cycle ends.
       const newCount = workCountRef.current + 1;
-      setWorkCount(newCount); workCountRef.current = newCount;
-      // Every Nth work session → long break, otherwise short break
-      const nextPhase = newCount % loopsUntilLong === 0 ? "long" : "short";
+      const cycleDone = newCount >= blocksUntilLong;
+      const setDone = newCount % blocksPerSet === 0;
+      const nextPhase = cycleDone ? "long" : setDone ? "short" : "micro";
+      // The counter tracks position inside one long-break cycle, so it rolls
+      // over when the long break is reached.
+      const nextCount = cycleDone ? 0 : newCount;
+      setWorkCount(nextCount); workCountRef.current = nextCount;
       setPhaseId(nextPhase); phaseIdRef.current = nextPhase;
       setTimeLeft(durationsRef.current[nextPhase] * 60);
       if (nextPhase === "long") {
         playLongBreakSound(mutedRef.current);
         sendNotification("Long Break", "Time for extended recovery");
-      } else {
+      } else if (nextPhase === "short") {
         playShortBreakSound(mutedRef.current);
         sendNotification("Short Break", "Do the reset exercises");
+      } else {
+        playMicroBreakSound(mutedRef.current);
+        sendNotification("Micro Break", "Look away, stand up, breathe");
       }
     } else {
       // Break finished → back to work
@@ -511,13 +629,14 @@ export default function AlignedFlow({ config, setConfig }) {
           {/* Content card — clicks here don't toggle timer */}
           <div className="pomo-card" onClick={(e) => e.stopPropagation()} style={{ background: "rgba(15,14,12,0.82)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: isMobile ? "1.25rem 1.15rem 1.1rem" : "1.75rem 1.75rem 1.5rem", boxShadow: `0 0 40px ${phase.color}10`, cursor: "default", maxHeight: isMobile ? "calc(100vh - 7.5rem)" : "calc(100vh - 8.5rem)", overflowY: "auto", msOverflowStyle: "none", scrollbarWidth: "none" }}>
             {phaseId === "work" && <WorkContent phase={phase} items={config.workItems} />}
-            {phaseId === "short" && <ShortBreakContent phase={phase} exercises={config.shortBreakExercises} summary={config.shortBreakSummary} />}
+            {phaseId === "micro" && <SimpleBreakContent phase={phase} exercises={config.microBreakExercises} summary={config.microBreakSummary} heading="Pick one, then straight back" />}
+            {phaseId === "short" && <SimpleBreakContent phase={phase} exercises={config.shortBreakExercises} summary={config.shortBreakSummary} heading="Do these in sequence" />}
             {phaseId === "long" && <LongBreakContent phase={phase} exercises={config.longBreakExercises} summary={config.longBreakSummary} />}
           </div>
         </div>
       </div>
 
-      <SettingsDrawer phases={PHASES} phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} loopsUntilLong={loopsUntilLong} setLoopsUntilLong={setLoopsUntilLong} muted={muted} toggleMuted={toggleMuted} />
+      <SettingsDrawer phases={PHASES} phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} microEnabled={microEnabled} toggleMicro={toggleMicro} loopsUntilShort={loopsUntilShort} setLoopsUntilShort={setLoopsUntilShort} setsUntilLong={setsUntilLong} setSetsUntilLong={setSetsUntilLong} blocksPerSet={blocksPerSet} workCount={workCount} muted={muted} toggleMuted={toggleMuted} />
     </div>
   );
 }
