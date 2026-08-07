@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { computeSectionColors, exportConfig, validateAndParseConfig, nextId, DEFAULT_CONFIG } from "./dataStore";
+import VersionStamp from "./VersionStamp";
 
 const FONT = "'DM Mono', monospace";
 const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#f0ece4", fontFamily: FONT, fontSize: "0.78rem", padding: "0.4rem 0.6rem", width: "100%", outline: "none" };
@@ -308,6 +309,7 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
 
         <button onClick={addExercise} style={{ ...btnSmall, width: "100%", marginTop: "0.6rem", padding: "0.55rem 0", textAlign: "center" }}>+ ADD EXERCISE</button>
 
+        <VersionStamp />
         <div style={{ height: 80 }} />{/* bottom spacer */}
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { exportConfig, validateAndParseConfig, DEFAULT_CONFIG } from "./dataStore";
+import VersionStamp from "./VersionStamp";
 
 const FONT = "'DM Mono', monospace";
 const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#f0ece4", fontFamily: FONT, fontSize: "0.78rem", padding: "0.4rem 0.6rem", width: "100%", outline: "none" };
@@ -213,6 +214,7 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
               onChange={exercises => setPomo(prev => ({ ...prev, longBreakExercises: exercises }))} hasSubtitle hasNote />
           </>
         )}
+        <VersionStamp />
         <div style={{ height: 80 }} />
       </div>
     </div>
