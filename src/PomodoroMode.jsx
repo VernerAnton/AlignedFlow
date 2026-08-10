@@ -155,11 +155,18 @@ const TimerRail = ({ phase, fillPct, isMobile, totalSeconds, timeLeft }) => {
   const railW = isMobile ? 44 : 52;
   const totalSec = totalSeconds || phase.duration * 60;
 
-  // Tick every 5 minutes for long durations, 1 minute for shorter
-  const totalMin = Math.ceil(totalSec / 60);
-  const tickIntervalMin = totalMin > 20 ? 5 : totalMin > 10 ? 5 : totalMin > 5 ? 1 : 1;
+  // Tick every 5 minutes for long durations, 1 minute for shorter.
+  // Floor rather than ceil: a fractional phase (2m30) must not put a tick
+  // above its own start, which would float off the top of the rail.
+  const totalMin = Math.floor(totalSec / 60);
+  const tickIntervalMin = totalMin > 10 ? 5 : 1;
   const ticks = [];
-  for (let m = totalMin; m >= 0; m -= tickIntervalMin) ticks.push(m * 60);
+  if (totalSec < 60) {
+    // Sub-minute phases — possible for micro breaks — need finer ticks
+    for (let s = Math.floor(totalSec / 30) * 30; s >= 0; s -= 30) ticks.push(s);
+  } else {
+    for (let m = totalMin; m >= 0; m -= tickIntervalMin) ticks.push(m * 60);
+  }
   if (ticks[ticks.length - 1] !== 0) ticks.push(0);
 
   const fmt = (s) => {
@@ -194,9 +201,19 @@ const TimerRail = ({ phase, fillPct, isMobile, totalSeconds, timeLeft }) => {
 
 // ── Settings drawer ───────────────────────────────────────────────────────────
 
-// Slider bounds per phase. Work goes down to 5 min so short focus blocks
-// paired with micro breaks are actually reachable.
-const DURATION_RANGES = { work: [5, 50], micro: [1, 5], short: [1, 15], long: [1, 30] };
+// Slider bounds per phase, as [min, max, step] in minutes. Work goes down to
+// 5 min so short focus blocks paired with micro breaks are actually reachable.
+// Micro moves in half minutes — at that length 30 s is a meaningful difference.
+const DURATION_RANGES = { work: [5, 50, 1], micro: [0.5, 5, 0.5], short: [1, 15, 1], long: [1, 30, 1] };
+
+// Minutes → label. Whole minutes stay "25m"; halves read as "2m30", and
+// anything under a minute is clearer in seconds outright.
+const fmtDuration = (min) => {
+  if (min < 1) return `${Math.round(min * 60)}s`;
+  const whole = Math.floor(min);
+  const sec = Math.round((min - whole) * 60);
+  return sec === 0 ? `${whole}m` : `${whole}m${String(sec).padStart(2, "0")}`;
+};
 
 const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, microEnabled, toggleMicro, loopsUntilShort, setLoopsUntilShort, setsUntilLong, setSetsUntilLong, blocksPerSet, workCount, muted, toggleMuted }) => {
   const [open, setOpen] = useState(false);
@@ -298,13 +315,13 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
 
           {/* Duration settings */}
           {visiblePhases.map((p) => {
-            const [min, max] = DURATION_RANGES[p.id] || [1, 30];
+            const [min, max, step] = DURATION_RANGES[p.id] || [1, 30, 1];
             return (
               <div key={p.id} style={{ marginBottom: "0.7rem" }}>
                 <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>{p.tag}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <input type="range" min={min} max={max} value={durations[p.id]} onChange={(e) => setDurations((d) => ({ ...d, [p.id]: Number(e.target.value) }))} disabled={isPlaying} style={{ flex: 1, accentColor: p.color, colorScheme: "dark" }} />
-                  <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: p.color, minWidth: "32px" }}>{durations[p.id]}m</span>
+                  <input type="range" min={min} max={max} step={step} value={durations[p.id]} onChange={(e) => setDurations((d) => ({ ...d, [p.id]: Number(e.target.value) }))} disabled={isPlaying} style={{ flex: 1, accentColor: p.color, colorScheme: "dark" }} />
+                  <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: p.color, minWidth: "42px" }}>{fmtDuration(durations[p.id])}</span>
                 </div>
               </div>
             );
@@ -340,10 +357,10 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             {/* Plain-language summary of the resulting cycle */}
             <div style={{ fontSize: "0.53rem", lineHeight: 1.6, fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.32)" }}>
               {microEnabled
-                ? <>{loopsUntilShort}× ({durations.work}m focus + {durations.micro}m micro) → {durations.short}m short break</>
-                : <>{durations.work}m focus → {durations.short}m short break</>}
+                ? <>{loopsUntilShort}× ({fmtDuration(durations.work)} focus + {fmtDuration(durations.micro)} micro) → {fmtDuration(durations.short)} short break</>
+                : <>{fmtDuration(durations.work)} focus → {fmtDuration(durations.short)} short break</>}
               <br />
-              ×{setsUntilLong} → {durations.long}m long break
+              ×{setsUntilLong} → {fmtDuration(durations.long)} long break
               <span style={{ color: "rgba(255,255,255,0.2)" }}> · {blocksPerSet * setsUntilLong} focus blocks per cycle</span>
             </div>
           </div>
