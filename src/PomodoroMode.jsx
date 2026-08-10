@@ -339,9 +339,11 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             {microEnabled && (
               <div style={{ marginBottom: "0.7rem" }}>
                 <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>FOCUS BLOCKS PER SHORT BREAK</div>
+                {/* Coloured for the break it schedules, not the phase between
+                    blocks — matching the long break slider below. */}
                 <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <input type="range" min={2} max={6} value={loopsUntilShort} onChange={(e) => setLoopsUntilShort(Number(e.target.value))} disabled={isPlaying} style={{ flex: 1, accentColor: phases.micro.color, colorScheme: "dark" }} />
-                  <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: phases.micro.color, minWidth: "20px" }}>{loopsUntilShort}</span>
+                  <input type="range" min={2} max={6} value={loopsUntilShort} onChange={(e) => setLoopsUntilShort(Number(e.target.value))} disabled={isPlaying} style={{ flex: 1, accentColor: phases.short.color, colorScheme: "dark" }} />
+                  <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: phases.short.color, minWidth: "20px" }}>{loopsUntilShort}</span>
                 </div>
               </div>
             )}
