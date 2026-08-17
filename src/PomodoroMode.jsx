@@ -204,7 +204,7 @@ const TimerRail = ({ phase, fillPct, isMobile, totalSeconds, timeLeft }) => {
 // Slider bounds per phase, as [min, max, step] in minutes. Work goes down to
 // 5 min so short focus blocks paired with micro breaks are actually reachable.
 // Micro moves in half minutes — at that length 30 s is a meaningful difference.
-const DURATION_RANGES = { work: [5, 50, 1], micro: [0.5, 5, 0.5], short: [1, 15, 1], long: [1, 30, 1] };
+const DURATION_RANGES = { work: [5, 50, 1], micro: [0.5, 5, 0.5], short: [1, 15, 1], long: [1, 35, 1] };
 
 // Minutes → label. Whole minutes stay "25m"; halves read as "2m30", and
 // anything under a minute is clearer in seconds outright.
