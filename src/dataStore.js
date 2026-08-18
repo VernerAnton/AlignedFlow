@@ -118,6 +118,9 @@ export const DEFAULT_CONFIG = {
     // out-of-the-box behaviour.
     taskTimerEnabled: false,
     taskDuration: 50,    // minutes of work-phase time per task
+    // With numbers off the pill segment becomes a bar that drains instead of a
+    // countdown, for when a visible clock is more pressure than help.
+    taskShowNumbers: true,
     muted: false,
   },
 };
@@ -162,6 +165,7 @@ export function migratePomodoro(p) {
   }
   if (p.taskTimerEnabled == null) p.taskTimerEnabled = d.taskTimerEnabled;
   if (p.taskDuration == null) p.taskDuration = d.taskDuration;
+  if (p.taskShowNumbers == null) p.taskShowNumbers = d.taskShowNumbers;
 
   delete p.loopsUntilLong; // superseded by loopsUntilShort × setsUntilLong
   return p;

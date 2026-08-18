@@ -51,7 +51,7 @@ export default function PomodoroBuilder({ config, setConfig, onBack }) {
     if (scope === "everything") {
       setPomo(structuredClone(defaults));
     } else if (scope === "settings") {
-      setPomo(prev => ({ ...prev, durations: structuredClone(defaults.durations), microEnabled: defaults.microEnabled, loopsUntilShort: defaults.loopsUntilShort, setsUntilLong: defaults.setsUntilLong, taskTimerEnabled: defaults.taskTimerEnabled, taskDuration: defaults.taskDuration, muted: defaults.muted ?? false }));
+      setPomo(prev => ({ ...prev, durations: structuredClone(defaults.durations), microEnabled: defaults.microEnabled, loopsUntilShort: defaults.loopsUntilShort, setsUntilLong: defaults.setsUntilLong, taskTimerEnabled: defaults.taskTimerEnabled, taskDuration: defaults.taskDuration, taskShowNumbers: defaults.taskShowNumbers, muted: defaults.muted ?? false }));
     } else if (scope === "workItems") {
       setPomo(prev => ({ ...prev, workItems: structuredClone(defaults.workItems), workSummary: defaults.workSummary, workHeading: defaults.workHeading }));
     } else if (scope === "microBreakExercises") {
