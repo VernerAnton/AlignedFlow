@@ -73,6 +73,14 @@ export default function App() {
   // while hovered or freshly tapped.
   const taskNumbers = !!taskStatus?.showNumbers
   const showTaskTime = taskNumbers || taskHover || taskTapped
+  // With the countdown shown the segment is a solid chip of the work colour
+  // carrying dark text, rather than bright text on near-black. A saturated
+  // block reads as a different object from the waterline behind it, where two
+  // shades of the same hue only read as a smudge.
+  const taskChip = taskNumbers
+  // The three sides facing the waterline get their own rim — the pill's shared
+  // border alone is too faint to hold an edge against a fill of the same hue.
+  const TASK_RIM = 'rgba(255,255,255,0.32)'
 
   function onExitEnd() {
     setPrevMode(null)
@@ -148,6 +156,13 @@ export default function App() {
                   width: TASK_SEG_W,
                   padding: isNarrow ? '0.42rem 0.5rem' : '0.42rem 0.7rem',
                   borderRight: '1px solid rgba(255,255,255,0.1)',
+                  // Nests inside the pill's own radius so the rim follows the
+                  // curve instead of being clipped square at the corners.
+                  borderRadius: '5px 0 0 5px',
+                  // Inset rather than a real border: no layout cost, so the
+                  // segment stays exactly as tall as the buttons beside it.
+                  boxShadow: `inset 1px 0 0 ${TASK_RIM}, inset 0 1px 0 ${TASK_RIM}, inset 0 -1px 0 ${TASK_RIM}`,
+                  background: taskChip ? taskStatus.color : 'transparent',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: isNarrow ? 'center' : 'space-between',
@@ -158,25 +173,37 @@ export default function App() {
                 }}
               >
                 {/* The bar is the whole readout when the countdown is off — no
-                    bar alongside the numbers, which was saying it twice. */}
+                    bar alongside the numbers, which was saying it twice. It
+                    stays a soft fill on dark rather than inverting like the
+                    chip: the peeked time can land on either side of the drain,
+                    and dark text over the drained half would disappear. */}
                 {!taskNumbers && (
                   <div style={{
                     position: 'absolute', left: 0, top: 0, bottom: 0,
                     width: `${taskStatus.remaining}%`,
-                    background: taskStatus.color, opacity: 0.3,
+                    borderRadius: '5px 0 0 5px',
+                    background: taskStatus.color, opacity: 0.8,
                     transition: 'width 0.6s linear',
                   }} />
                 )}
                 {/* The label is the first thing to go on a phone. */}
                 {!isNarrow && (
-                  <span style={{ position: 'relative', fontSize: '0.5rem', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.28)' }}>TASK</span>
+                  <span style={{
+                    position: 'relative',
+                    fontSize: '0.5rem', letterSpacing: '0.14em',
+                    color: taskChip ? taskStatus.deep : 'rgba(240,236,228,0.6)',
+                    opacity: taskChip ? 0.72 : 1,
+                  }}>TASK</span>
                 )}
                 {/* Kept in the layout even when hidden, so revealing the time
                     never changes the pill's width. */}
+                {/* On the chip the time is dark on colour. On the bar it is
+                    cream: the drain boundary moves under it, and cream is the
+                    only tone legible over both the filled and spent halves. */}
                 <span style={{
                   position: 'relative',
                   fontSize: '0.6rem', letterSpacing: '0.04em',
-                  color: taskStatus.color,
+                  color: taskChip ? taskStatus.deep : '#f0ece4',
                   opacity: showTaskTime ? 1 : 0,
                   transition: 'opacity 0.25s',
                 }}>{taskStatus.time}</span>

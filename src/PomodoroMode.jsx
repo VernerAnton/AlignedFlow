@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { playStartSound, playStopSound, playMicroBreakSound, playShortBreakSound, playLongBreakSound, playDoneSound } from "./sounds";
 import { sendNotification } from "./notifications";
-import { computePhaseDim } from "./dataStore";
+import { computePhaseDim, computePhaseDeep } from "./dataStore";
 
 // Exported so App can size the mode-switcher pill against the same breakpoint.
 export function useWindowWidth() {
@@ -785,6 +785,9 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
       // reads the same way as the waterline behind it.
       remaining: taskTotalSec > 0 ? Math.max(0, 100 - (taskElapsed / taskTotalSec) * 100) : 0,
       color: PHASES.work.color,
+      // Paired shade for text on a chip filled with the colour itself. Derived
+      // rather than fixed, since the work colour is editable in the builder.
+      deep: computePhaseDeep(PHASES.work.color),
     });
   }, [taskEnabled, taskShowNumbers, taskElapsed, taskTotalSec, PHASES.work.color, onTaskStatus]);
 
