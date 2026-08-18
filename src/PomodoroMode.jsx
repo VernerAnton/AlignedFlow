@@ -15,6 +15,37 @@ export function useWindowWidth() {
   return w;
 }
 
+// Long-press detector (~400ms hold) — opens the cycle editor without
+// colliding with the ordinary tap-to-toggle on the same handle, and without
+// relying on double-click/double-tap: no precedent for that gesture
+// elsewhere in this app, and it's riskier on a mobile PWA where it can
+// collide with the browser's native zoom/selection gestures.
+function useLongPress(onLongPress, ms = 400) {
+  const timerRef = useRef(null);
+  const firedRef = useRef(false);
+  const startRef = useRef({ x: 0, y: 0 });
+
+  const clear = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
+
+  return {
+    onPointerDown: (e) => {
+      firedRef.current = false;
+      startRef.current = { x: e.clientX, y: e.clientY };
+      clear();
+      timerRef.current = setTimeout(() => { firedRef.current = true; onLongPress(); }, ms);
+    },
+    // A move beyond a small threshold reads as a scroll/drag, not a hold.
+    onPointerMove: (e) => {
+      const dx = e.clientX - startRef.current.x, dy = e.clientY - startRef.current.y;
+      if (Math.hypot(dx, dy) > 10) clear();
+    },
+    onPointerUp: clear,
+    onPointerLeave: clear,
+    onPointerCancel: clear,
+    didFire: () => firedRef.current,
+  };
+}
+
 // ── Content panels ──────────────────────────────────────────────────────────
 
 const WorkContent = ({ phase, items, summary, heading }) => {
@@ -105,13 +136,28 @@ const LongBreakContent = ({ phase, exercises, summary, heading }) => {
 
 // ── Cycle indicator ──────────────────────────────────────────────────────────
 
-// One diamond per focus block in the current long-break cycle, split into sets
-// by a divider at each short break. Filled = done, ringed = current.
+// One diamond per focus block in the current long-break cycle, split into
+// sets by a divider at each short break, ending in a dot for the long break.
+// Shared by the compact read-only handle indicator and the bigger tap-to-jump
+// editor below, so both always agree on the cycle's shape.
+function buildCycleLayout(blocksPerSet, setsUntilLong, done) {
+  const total = blocksPerSet * setsUntilLong;
+  const items = [];
+  for (let i = 0; i < total; i++) {
+    items.push({ type: "block", index: i, isDone: i < done, isCurrent: i === done });
+    // Divider after each completed set, except at the very end of the cycle
+    const atSetEnd = (i + 1) % blocksPerSet === 0 && i + 1 < total;
+    if (atSetEnd) items.push({ type: "divider", workCountAfter: i + 1 });
+  }
+  items.push({ type: "long" });
+  return { total, items };
+}
+
 // Falls back to a numeric readout once the cycle is too long to draw.
 const MAX_DRAWN_BLOCKS = 14;
 
 const CycleIndicator = ({ blocksPerSet, setsUntilLong, done, phases }) => {
-  const total = blocksPerSet * setsUntilLong;
+  const { total, items } = buildCycleLayout(blocksPerSet, setsUntilLong, done);
   // Tighten up for longer cycles so they still fit a phone's width
   const size = total > 9 ? 6 : 7;
   const gap = total > 9 ? 3 : 4;
@@ -126,27 +172,82 @@ const CycleIndicator = ({ blocksPerSet, setsUntilLong, done, phases }) => {
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap }}>
-      {Array.from({ length: total }, (_, i) => {
-        const isDone = i < done;
-        const isCurrent = i === done;
-        const marks = [
-          <div key={`b${i}`} style={{
-            width: size, height: size, transform: "rotate(45deg)", flexShrink: 0,
-            background: isDone ? phases.work.color : "transparent",
-            border: `1px solid ${isDone || isCurrent ? phases.work.color : "rgba(255,255,255,0.22)"}`,
-            opacity: isCurrent ? 1 : isDone ? 0.55 : 0.5,
-            boxShadow: isCurrent ? `0 0 5px ${phases.work.color}99` : "none",
-            transition: "all 0.3s",
-          }} />,
-        ];
-        // Divider after each completed set, except at the very end of the cycle
-        const atSetEnd = (i + 1) % blocksPerSet === 0 && i + 1 < total;
-        if (atSetEnd) {
-          marks.push(<div key={`s${i}`} style={{ width: 1, height: size + 2, background: phases.short.color, opacity: 0.45, margin: "0 1px", flexShrink: 0 }} />);
+      {items.map((item, i) => {
+        if (item.type === "block") {
+          const { isDone, isCurrent } = item;
+          return (
+            <div key={i} style={{
+              width: size, height: size, transform: "rotate(45deg)", flexShrink: 0,
+              background: isDone ? phases.work.color : "transparent",
+              border: `1px solid ${isDone || isCurrent ? phases.work.color : "rgba(255,255,255,0.22)"}`,
+              opacity: isCurrent ? 1 : isDone ? 0.55 : 0.5,
+              boxShadow: isCurrent ? `0 0 5px ${phases.work.color}99` : "none",
+              transition: "all 0.3s",
+            }} />
+          );
         }
-        return marks;
+        if (item.type === "divider") {
+          return <div key={i} style={{ width: 1, height: size + 2, background: phases.short.color, opacity: 0.45, margin: "0 1px", flexShrink: 0 }} />;
+        }
+        return <div key={i} style={{ width: 3, height: 3, borderRadius: "50%", background: phases.long.color, opacity: 0.7, marginLeft: 1, flexShrink: 0 }} />;
       })}
-      <div style={{ width: 3, height: 3, borderRadius: "50%", background: phases.long.color, opacity: 0.7, marginLeft: 1, flexShrink: 0 }} />
+    </div>
+  );
+};
+
+// Bigger, tappable version of the same layout — lets the cycle be jumped to
+// any work block, short break, or long break directly. Exists for correcting
+// where the app thinks you are (e.g. reopening it expecting to pick up
+// mid-block rather than at whatever it last remembered) rather than only
+// ever advancing by running the timer through it. Micro breaks aren't
+// jumpable — they're not represented in the cycle layout at all, same as the
+// compact indicator above.
+const CycleEditor = ({ blocksPerSet, setsUntilLong, done, phases, phaseId, disabled, onJump }) => {
+  const { items } = buildCycleLayout(blocksPerSet, setsUntilLong, done);
+  const size = 14;
+
+  const targetProps = (color, isCurrent) => ({
+    className: `cycle-jump-target${disabled ? " disabled" : ""}`,
+    style: { "--pulse-color": color, boxShadow: isCurrent ? `0 0 8px ${color}99` : "none" },
+  });
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "0.5rem 0" }}>
+      {items.map((item, i) => {
+        if (item.type === "block") {
+          const { index, isDone, isCurrent } = item;
+          const t = targetProps(phases.work.color, isCurrent && phaseId === "work");
+          return (
+            <div key={i} {...t} onClick={() => !disabled && onJump("work", index)} style={{
+              ...t.style,
+              width: size, height: size, transform: "rotate(45deg)", flexShrink: 0,
+              background: isDone ? phases.work.color : "transparent",
+              border: `1.5px solid ${isDone || isCurrent ? phases.work.color : "rgba(255,255,255,0.25)"}`,
+              opacity: isCurrent ? 1 : isDone ? 0.6 : 0.55,
+            }} />
+          );
+        }
+        if (item.type === "divider") {
+          const isCurrent = phaseId === "short" && done === item.workCountAfter;
+          const t = targetProps(phases.short.color, isCurrent);
+          return (
+            <div key={i} {...t} onClick={() => !disabled && onJump("short", item.workCountAfter)} style={{
+              ...t.style,
+              width: size * 0.55, height: size + 4, borderRadius: 2, flexShrink: 0,
+              background: phases.short.color, opacity: isCurrent ? 0.9 : 0.4,
+            }} />
+          );
+        }
+        const isCurrent = phaseId === "long";
+        const t = targetProps(phases.long.color, isCurrent);
+        return (
+          <div key={i} {...t} onClick={() => !disabled && onJump("long", 0)} style={{
+            ...t.style,
+            width: size * 0.65, height: size * 0.65, borderRadius: "50%", flexShrink: 0, marginLeft: 2,
+            background: phases.long.color, opacity: isCurrent ? 0.95 : 0.5,
+          }} />
+        );
+      })}
     </div>
   );
 };
@@ -295,19 +396,34 @@ const TASK_RANGE = [10, 120, 5];
 
 const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, microEnabled, toggleMicro, loopsUntilShort, setLoopsUntilShort, setsUntilLong, setSetsUntilLong, blocksPerSet, workCount, muted, toggleMuted, taskEnabled, toggleTaskTimer, taskDuration, setTaskDuration, taskElapsed, onResetTask, showNumbers, toggleShowNumbers }) => {
   const [open, setOpen] = useState(false);
+  // Long-press-triggered "jump anywhere in the cycle" editor — independent of
+  // the drawer's own open/closed state so it works from the collapsed handle.
+  const [cycleEditorOpen, setCycleEditorOpen] = useState(false);
   const drawerRef = useRef(null);
+  // The expanded editor is portaled straight to <body> (see below) so its
+  // "fixed" positioning resolves against the viewport rather than this
+  // panel's own transformed, off-center box — it needs its own ref for the
+  // outside-click check below since it isn't a DOM descendant of drawerRef.
+  const editorRef = useRef(null);
   const drawerWidth = useWindowWidth();
   const drawerMobile = drawerWidth < 600;
   const fillOffset = drawerMobile ? 38 : 45;
+  // Same rail width the background fill/timer rail use, so the expanded
+  // editor spans exactly the visible colored area rather than a narrower
+  // width of its own.
+  const railW = drawerMobile ? 44 : 52;
+  const cycleLongPress = useLongPress(() => setCycleEditorOpen(true));
 
   useEffect(() => {
-    if (!open) return;
+    if (!open && !cycleEditorOpen) return;
     const handler = (e) => {
-      if (drawerRef.current && !drawerRef.current.contains(e.target)) setOpen(false);
+      const inDrawer = drawerRef.current && drawerRef.current.contains(e.target);
+      const inEditor = editorRef.current && editorRef.current.contains(e.target);
+      if (!inDrawer && !inEditor) { setOpen(false); setCycleEditorOpen(false); }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [open, cycleEditorOpen]);
 
   const btnBase = { border: "1px solid rgba(255,255,255,0.18)", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" };
 
@@ -327,9 +443,20 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
         transition: "transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
         overflow: "hidden",
       }}>
-        {/* Chevron handle */}
+        {/* Chevron handle — a quick tap toggles the drawer; a long-press (or
+            a tap while the cycle editor is already open) opens/closes the
+            bigger tap-to-jump cycle editor instead. */}
         <div
-          onClick={() => setOpen(!open)}
+          onClick={() => {
+            if (cycleLongPress.didFire()) return; // the hold already handled this gesture
+            if (cycleEditorOpen) { setCycleEditorOpen(false); return; }
+            setOpen(!open);
+          }}
+          onPointerDown={cycleLongPress.onPointerDown}
+          onPointerMove={cycleLongPress.onPointerMove}
+          onPointerUp={cycleLongPress.onPointerUp}
+          onPointerLeave={cycleLongPress.onPointerLeave}
+          onPointerCancel={cycleLongPress.onPointerCancel}
           style={{
             height: 32,
             display: "flex",
@@ -339,6 +466,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             pointerEvents: "auto",
             gap: 12,
             padding: "0 0.9rem",
+            touchAction: "none",
           }}
         >
           <CycleIndicator blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} />
@@ -346,6 +474,36 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             <polyline points="1,7 7,1 13,7" fill="none" stroke={open ? phase.color : "rgba(255,255,255,0.7)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
+
+        {/* Expanded cycle editor — spans the full colored area rather than
+            this narrow, centered panel, with bigger tap targets for jumping
+            straight to a block, short break, or the long break. Portaled to
+            <body>: this drawer's own container is `transform`-positioned,
+            which would otherwise become the containing block for a "fixed"
+            child and confine it to this panel's narrow, off-center box
+            instead of the viewport. */}
+        {cycleEditorOpen && createPortal(
+          <div ref={editorRef} style={{
+            position: "fixed",
+            left: drawerMobile ? railW - 6 : railW - 7,
+            right: 0,
+            bottom: 0,
+            zIndex: 25,
+            pointerEvents: "auto",
+            background: "rgba(15,14,12,0.98)",
+            backdropFilter: "blur(16px)",
+            borderTop: "1px solid rgba(255,255,255,0.12)",
+            padding: "0.35rem 1rem",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <CycleEditor blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} phaseId={phaseId} disabled={isPlaying} onJump={(id, newWorkCount) => setPhaseId(id, newWorkCount)} />
+              <svg width="14" height="8" viewBox="0 0 14 8" onClick={() => setCycleEditorOpen(false)} style={{ opacity: 0.4, cursor: "pointer", flexShrink: 0, transform: "rotate(180deg)" }}>
+                <polyline points="1,7 7,1 13,7" fill="none" stroke={phase.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          </div>,
+          document.body
+        )}
 
         {/* Drawer content */}
         {/* Scrolls rather than running off the top of short screens — the
@@ -809,9 +967,12 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
     playStartSound(mutedRef.current);
   };
 
-  // Manual phase change (from drawer)
-  const handlePhaseChange = (id) => {
+  // Manual phase change (from drawer). newWorkCount is only passed by the
+  // cycle editor jumping to a specific block/break — the ordinary phase
+  // pills leave the block count untouched.
+  const handlePhaseChange = (id, newWorkCount) => {
     setPhaseId(id); phaseIdRef.current = id;
+    if (newWorkCount !== undefined) { setWorkCount(newWorkCount); workCountRef.current = newWorkCount; }
     setTimeLeft(durations[id] * 60);
     setIsPlaying(false);
     // Animate waterline back to 100%
@@ -848,7 +1009,11 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
     <div style={{ position: "relative", minHeight: "100%", background: "#0f0e0c", fontFamily: "Georgia, serif", overflow: "hidden" }}>
       <style dangerouslySetInnerHTML={{ __html: `.pomo-card::-webkit-scrollbar{display:none}
 @keyframes taskFade { from { opacity: 0 } to { opacity: 1 } }
-@keyframes taskRise { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }` }} />
+@keyframes taskRise { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
+@keyframes cyclePulse { 0%, 100% { box-shadow: 0 0 0 0 var(--pulse-color, transparent); } 50% { box-shadow: 0 0 16px 4px var(--pulse-color, transparent); } }
+.cycle-jump-target { cursor: pointer; transition: opacity 0.15s; }
+.cycle-jump-target:hover, .cycle-jump-target:active { animation: cyclePulse 1.1s ease-in-out infinite; }
+.cycle-jump-target.disabled { cursor: default; pointer-events: none; opacity: 0.3 !important; animation: none; }` }} />
 
       {/* Background fill — tap to play/pause */}
       <div onClick={onPlayPause} style={{ position: "absolute", bottom: 0, left: isMobile ? railW - 6 : railW - 7, right: 0, height: `${fillPct}%`, background: phase.colorDim, transition: "background 0.6s ease", cursor: "pointer", zIndex: 0 }} />
