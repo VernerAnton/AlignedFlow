@@ -1,6 +1,7 @@
 // ── Data store: defaults, persistence, color computation, export/import ──
 
 const STORAGE_KEY = "alignedflow-config";
+const SESSION_KEY = "alignedflow-session";
 
 export function computeSectionColors(hex) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -192,6 +193,28 @@ export function loadConfig() {
 export function saveConfig(config) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  } catch (e) {
+    // localStorage full or unavailable — silent fail
+  }
+}
+
+// Pomodoro's in-progress cycle position (phase + block count) — separate from
+// the settings blob above since it's transient session state, not something
+// export/import should carry. No versioning needed: it's a flat, disposable
+// shape that just falls back to defaults if missing or malformed.
+export function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    // corrupted — fall back to defaults
+  }
+  return null;
+}
+
+export function saveSession(session) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   } catch (e) {
     // localStorage full or unavailable — silent fail
   }

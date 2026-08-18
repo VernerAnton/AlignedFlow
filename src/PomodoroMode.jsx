@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { playStartSound, playStopSound, playMicroBreakSound, playShortBreakSound, playLongBreakSound, playDoneSound } from "./sounds";
 import { sendNotification } from "./notifications";
-import { computePhaseDim } from "./dataStore";
+import { computePhaseDim, loadSession, saveSession } from "./dataStore";
 
 // Exported so App can size the mode-switcher pill against the same breakpoint.
 export function useWindowWidth() {
@@ -503,12 +503,17 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
 // ── Root ──────────────────────────────────────────────────────────────────────
 
 export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
-  const [phaseId, setPhaseId] = useState("work");
+  // Restore where the diamonds left off — which phase and how far into the
+  // long-break cycle — so closing/refreshing the app doesn't lose your place.
+  // The countdown itself is not restored (see timeLeft below): the phase
+  // timer always comes back paused at its full duration.
+  const restoredSession = useMemo(() => loadSession(), []);
+  const [phaseId, setPhaseId] = useState(() => restoredSession?.phaseId || "work");
   const [durations, setDurations] = useState(() => config.durations || { work: 25, micro: 2, short: 5, long: 15 });
   const [isPlaying, setIsPlaying] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(() => (config.durations?.work || 25) * 60);
+  const [timeLeft, setTimeLeft] = useState(() => (config.durations?.[restoredSession?.phaseId || "work"] || 25) * 60);
   // Focus blocks completed within the current long-break cycle (resets at each long break)
-  const [workCount, setWorkCount] = useState(0);
+  const [workCount, setWorkCount] = useState(() => restoredSession?.workCount ?? 0);
   const [microEnabled, setMicroEnabled] = useState(() => config.microEnabled ?? false);
   const [loopsUntilShort, setLoopsUntilShort] = useState(() => config.loopsUntilShort ?? 3);
   const [setsUntilLong, setSetsUntilLong] = useState(() => config.setsUntilLong ?? 4);
@@ -563,6 +568,14 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
   useEffect(() => {
     setConfig(prev => ({ ...prev, pomodoro: { ...prev.pomodoro, durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskTimerEnabled: taskEnabled, taskDuration, taskShowNumbers } }));
   }, [durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskEnabled, taskDuration, taskShowNumbers]);
+
+  // Persist the diamonds' cycle position so it survives a close/reopen or
+  // hard refresh. The countdown itself (timeLeft, isPlaying) is intentionally
+  // left out — it always comes back paused at the restored phase's full
+  // duration rather than trying to reconstruct elapsed time.
+  useEffect(() => {
+    saveSession({ phaseId, workCount });
+  }, [phaseId, workCount]);
 
   const PHASES = useMemo(() => {
     const p = config.phases || { work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" }, micro: { color: "#e8899e", tag: "MICRO", label: "Micro Break" }, short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" }, long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" } };
