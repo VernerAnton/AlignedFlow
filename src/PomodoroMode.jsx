@@ -4,7 +4,8 @@ import { playStartSound, playStopSound, playMicroBreakSound, playShortBreakSound
 import { sendNotification } from "./notifications";
 import { computePhaseDim } from "./dataStore";
 
-function useWindowWidth() {
+// Exported so App can size the mode-switcher pill against the same breakpoint.
+export function useWindowWidth() {
   const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 800);
   useEffect(() => {
     const fn = () => setW(window.innerWidth);
@@ -226,35 +227,10 @@ const fmtClock = (s) => {
 // inside it: only work-phase seconds count toward it, so breaks — and the
 // length of a focus block — are free to be whatever suits the body while the
 // task keeps its own clock.
-
-// Corner readout of how much of the task budget is left. Inert by design —
-// clicks fall through to the play/pause surface underneath.
-const TaskBadge = ({ color, elapsed, total, isMobile }) => {
-  const remaining = Math.max(0, total - elapsed);
-  const pct = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0;
-  return (
-    <div style={{
-      // A phone is too narrow to sit beside the mode switcher, so it drops to
-      // the row below rather than shrinking into an unreadable chip.
-      position: "fixed", top: isMobile ? "3.05rem" : "0.85rem", right: "0.9rem", zIndex: 30,
-      pointerEvents: "none",
-      background: "rgba(15,14,12,0.88)",
-      backdropFilter: "blur(8px)",
-      border: "1px solid rgba(255,255,255,0.14)",
-      borderRadius: 6,
-      padding: "0.3rem 0.5rem 0.34rem",
-      display: "flex", flexDirection: "column", gap: 4, minWidth: 82,
-    }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, fontFamily: "'DM Mono', monospace" }}>
-        <span style={{ fontSize: "0.48rem", letterSpacing: "0.14em", color: "rgba(255,255,255,0.3)" }}>TASK</span>
-        <span style={{ fontSize: "0.6rem", letterSpacing: "0.04em", color }}>{fmtClock(remaining)}</span>
-      </div>
-      <div style={{ height: 2, background: "rgba(255,255,255,0.1)", borderRadius: 1, overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: color, opacity: 0.8, transition: "width 0.6s linear" }} />
-      </div>
-    </div>
-  );
-};
+//
+// The remaining-time readout is not rendered here — it is published upward and
+// drawn as a segment of the mode-switcher pill, so the two read as one control
+// cluster instead of a badge floating beside it.
 
 // Shown the moment the budget runs out, over a blurred, frozen app. Portalled
 // to the body so the blur covers the mode switcher too — the whole surface
@@ -509,7 +485,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export default function AlignedFlow({ config, setConfig }) {
+export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
   const [phaseId, setPhaseId] = useState("work");
   const [durations, setDurations] = useState(() => config.durations || { work: 25, micro: 2, short: 5, long: 15 });
   const [isPlaying, setIsPlaying] = useState(false);
@@ -776,6 +752,19 @@ export default function AlignedFlow({ config, setConfig }) {
     sendNotification("Task time is up", `${fmtDuration(taskDuration)} of focus done — on to the next task`);
   }, [taskElapsed, taskEnabled, taskDone, isPlaying, taskTotalSec]);
 
+  // Hand the budget to App, which draws it into the mode-switcher pill. Sent
+  // even while switched off so the pill keeps the last figures to animate the
+  // segment closed with, rather than blanking mid-collapse.
+  useEffect(() => {
+    if (!onTaskStatus) return;
+    onTaskStatus({
+      active: taskEnabled,
+      time: fmtClock(Math.max(0, taskTotalSec - taskElapsed)),
+      pct: taskTotalSec > 0 ? Math.min(100, (taskElapsed / taskTotalSec) * 100) : 0,
+      color: PHASES.work.color,
+    });
+  }, [taskEnabled, taskElapsed, taskTotalSec, PHASES.work.color, onTaskStatus]);
+
   // Dismissing the overlay resets the budget and picks the frozen block back
   // up mid-stride, so the loop structure is never reshaped by the task.
   const onTaskContinue = () => {
@@ -849,8 +838,6 @@ export default function AlignedFlow({ config, setConfig }) {
           </div>
         </div>
       </div>
-
-      {taskEnabled && <TaskBadge color={PHASES.work.color} elapsed={taskElapsed} total={taskTotalSec} isMobile={isMobile} />}
 
       <SettingsDrawer phases={PHASES} phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} microEnabled={microEnabled} toggleMicro={toggleMicro} loopsUntilShort={loopsUntilShort} setLoopsUntilShort={setLoopsUntilShort} setsUntilLong={setsUntilLong} setSetsUntilLong={setSetsUntilLong} blocksPerSet={blocksPerSet} workCount={workCount} muted={muted} toggleMuted={toggleMuted} taskEnabled={taskEnabled} toggleTaskTimer={toggleTaskTimer} taskDuration={taskDuration} setTaskDuration={setTaskDuration} taskElapsed={taskElapsed} onResetTask={onResetTask} />
 
