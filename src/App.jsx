@@ -60,27 +60,27 @@ export default function App() {
 
   const isBuilder = mode.startsWith('builder-')
 
-  // The task segment belongs to work mode only. Its width is fixed rather than
-  // fitted to the text so a budget ticking under an hour — seven characters
-  // down to five — does not shuffle the buttons beside it.
+  // The task segment belongs to work mode only, and stays fused into the same
+  // pill as WORK/EVENING/EDIT — sharing its border and background rather than
+  // floating beside it. Its width is fixed rather than fitted to the text so
+  // a budget ticking under an hour — seven characters down to five — does not
+  // shuffle the buttons beside it.
   const isNarrow = width < 600
   const TASK_SEG_W = isNarrow ? 68 : 104
   const showTask = mode === 'work' && !!taskStatus?.active
-  // Nothing is compensated for here: the pill is centred as a whole, so it
-  // stays centred whether or not the task segment is part of it.
-  const pillShift = mode === 'evening' ? -23 : 23
-  // Countdown hidden → the segment is a draining bar, revealing the time only
+  // Half the segment's width is subtracted back out of the pill's own centring
+  // offset when it's showing, so the row's growth is invisible to the three
+  // buttons — they sit at the exact same pixels whether the segment is there
+  // or not.
+  const pillShift = (mode === 'evening' ? -23 : 23) - (showTask ? TASK_SEG_W / 2 : 0)
+  // Countdown off → the chip shows just the word TASK, revealing the time only
   // while hovered or freshly tapped.
   const taskNumbers = !!taskStatus?.showNumbers
   const showTaskTime = taskNumbers || taskHover || taskTapped
-  // With the countdown shown the segment is a solid chip of the work colour
-  // carrying dark text, rather than bright text on near-black. A saturated
-  // block reads as a different object from the waterline behind it, where two
-  // shades of the same hue only read as a smudge.
-  const taskChip = taskNumbers
-  // The three sides facing the waterline get their own rim — the pill's shared
-  // border alone is too faint to hold an edge against a fill of the same hue.
-  const TASK_RIM = 'rgba(255,255,255,0.32)'
+  // Never brighter than the switcher's own active label — the same
+  // rgba(255,255,255,0.75) WORK uses when selected — so the chip reads as
+  // part of the same control rather than a louder one bolted beside it.
+  const MODE_TEXT = 'rgba(255,255,255,0.75)'
 
   function onExitEnd() {
     setPrevMode(null)
@@ -121,7 +121,10 @@ export default function App() {
         {mode === 'builder-evening' && <EveningBuilder config={config} setConfig={setConfig} onBack={() => switchMode('evening')} />}
       </div>
 
-      {/* Floating mode switcher pill — fixed, above both modes (hidden in builder) */}
+      {/* Floating mode switcher pill — fixed, above both modes (hidden in
+          builder). The task segment is a flex child of this same bordered,
+          clipped row — fused to WORK/EVENING/EDIT, not a separate element
+          beside it. */}
       {!isBuilder && (
         <div style={{
           position: 'fixed',
@@ -137,8 +140,12 @@ export default function App() {
           borderRadius: 6,
           overflow: 'hidden',
         }}>
-          {/* Task budget — collapses to nothing outside work mode, animating in
-              step with the pill's own slide. */}
+          {/* Task segment — collapses to nothing outside work mode, animating
+              in step with the pill's own slide. Its background is the only
+              thing the countdown toggle changes: transparent (so the shared
+              pill background shows through and it reads as fused) with
+              numbers on, solid work colour (so it reads as its own indicator)
+              with them off. */}
           {taskStatus && (
             <div style={{
               maxWidth: showTask ? TASK_SEG_W : 0,
@@ -154,58 +161,40 @@ export default function App() {
                 style={{
                   position: 'relative',
                   width: TASK_SEG_W,
-                  padding: isNarrow ? '0.42rem 0.5rem' : '0.42rem 0.7rem',
+                  height: '100%',
                   borderRight: '1px solid rgba(255,255,255,0.1)',
-                  // Nests inside the pill's own radius so the rim follows the
-                  // curve instead of being clipped square at the corners.
-                  borderRadius: '5px 0 0 5px',
-                  // Inset rather than a real border: no layout cost, so the
-                  // segment stays exactly as tall as the buttons beside it.
-                  boxShadow: `inset 1px 0 0 ${TASK_RIM}, inset 0 1px 0 ${TASK_RIM}, inset 0 -1px 0 ${TASK_RIM}`,
-                  background: taskChip ? taskStatus.color : 'transparent',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: isNarrow ? 'center' : 'space-between',
-                  gap: 6,
-                  fontFamily: "'DM Mono', monospace",
-                  whiteSpace: 'nowrap',
+                  background: taskNumbers ? 'transparent' : taskStatus.color,
+                  transition: 'background 0.4s',
                   cursor: taskNumbers ? 'default' : 'pointer',
+                  fontFamily: "'DM Mono', monospace",
                 }}
               >
-                {/* The bar is the whole readout when the countdown is off — no
-                    bar alongside the numbers, which was saying it twice. It
-                    stays a soft fill on dark rather than inverting like the
-                    chip: the peeked time can land on either side of the drain,
-                    and dark text over the drained half would disappear. */}
-                {!taskNumbers && (
-                  <div style={{
-                    position: 'absolute', left: 0, top: 0, bottom: 0,
-                    width: `${taskStatus.remaining}%`,
-                    borderRadius: '5px 0 0 5px',
-                    background: taskStatus.color, opacity: 0.8,
-                    transition: 'width 0.6s linear',
-                  }} />
-                )}
-                {/* The label is the first thing to go on a phone. */}
+                {/* TASK — centred while the numbers are hidden, slides to the
+                    left edge the moment they show (toggle on, or a hover/tap
+                    peek), opening the right side for them without resizing
+                    the segment. Dropped entirely on a phone — there is no
+                    room for a label beside the numbers, so a peek there just
+                    centres the clock in the whole segment. */}
                 {!isNarrow && (
                   <span style={{
-                    position: 'relative',
+                    position: 'absolute', top: '50%',
+                    left: showTaskTime ? '0.6rem' : '50%',
+                    transform: showTaskTime ? 'translateY(-50%)' : 'translate(-50%, -50%)',
+                    transition: 'left 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
                     fontSize: '0.5rem', letterSpacing: '0.14em',
-                    color: taskChip ? taskStatus.deep : 'rgba(240,236,228,0.6)',
-                    opacity: taskChip ? 0.72 : 1,
+                    color: MODE_TEXT, whiteSpace: 'nowrap',
                   }}>TASK</span>
                 )}
-                {/* Kept in the layout even when hidden, so revealing the time
-                    never changes the pill's width. */}
-                {/* On the chip the time is dark on colour. On the bar it is
-                    cream: the drain boundary moves under it, and cream is the
-                    only tone legible over both the filled and spent halves. */}
                 <span style={{
-                  position: 'relative',
+                  position: 'absolute', top: '50%',
+                  ...(isNarrow
+                    ? { left: '50%', transform: 'translate(-50%, -50%)' }
+                    : { right: '0.6rem', transform: 'translateY(-50%)' }),
                   fontSize: '0.6rem', letterSpacing: '0.04em',
-                  color: taskChip ? taskStatus.deep : '#f0ece4',
+                  color: MODE_TEXT,
                   opacity: showTaskTime ? 1 : 0,
                   transition: 'opacity 0.25s',
+                  whiteSpace: 'nowrap',
                 }}>{taskStatus.time}</span>
               </div>
             </div>
@@ -231,7 +220,7 @@ export default function App() {
                 fontSize: '0.6rem',
                 letterSpacing: '0.14em',
                 color: id === 'edit' ? 'rgba(255,255,255,0.35)'
-                  : id === mode ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.22)',
+                  : id === mode ? MODE_TEXT : 'rgba(255,255,255,0.22)',
                 borderLeft: id === 'edit' ? '1px solid rgba(255,255,255,0.1)' : 'none',
                 transition: 'color 0.25s',
               }}
