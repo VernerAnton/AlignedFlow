@@ -154,9 +154,13 @@ export default function App() {
               flexShrink: 0,
               transition: 'max-width 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s',
             }}>
+              {/* Pointer events, gated to real mice: a tap on touch also
+                  synthesises a mouseenter with no matching mouseleave, which
+                  would latch taskHover permanently on and mask the tap's own
+                  self-clearing timer below. */}
               <div
-                onMouseEnter={() => setTaskHover(true)}
-                onMouseLeave={() => setTaskHover(false)}
+                onPointerEnter={(e) => { if (e.pointerType === 'mouse') setTaskHover(true) }}
+                onPointerLeave={(e) => { if (e.pointerType === 'mouse') setTaskHover(false) }}
                 onClick={taskNumbers ? undefined : peekTask}
                 style={{
                   position: 'relative',
@@ -169,31 +173,38 @@ export default function App() {
                   fontFamily: "'DM Mono', monospace",
                 }}
               >
-                {/* TASK — centred while the numbers are hidden, slides to the
-                    left edge the moment they show (toggle on, or a hover/tap
-                    peek), opening the right side for them without resizing
-                    the segment. Dropped entirely on a phone — there is no
-                    room for a label beside the numbers, so a peek there just
-                    centres the clock in the whole segment. */}
-                {!isNarrow && (
-                  <span style={{
-                    position: 'absolute', top: '50%',
-                    left: showTaskTime ? '0.6rem' : '50%',
-                    transform: showTaskTime ? 'translateY(-50%)' : 'translate(-50%, -50%)',
-                    transition: 'left 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
-                    fontSize: '0.5rem', letterSpacing: '0.14em',
-                    color: MODE_TEXT, whiteSpace: 'nowrap',
-                  }}>TASK</span>
-                )}
+                {/* TASK — on a phone there's no room to share the segment
+                    with the numbers, so instead of sliding aside it
+                    crossfades with them in the same centred spot. On desktop
+                    it still slides to the left edge, opening the right side
+                    for the numbers without resizing anything. Either way,
+                    numbers-on mode holds showTaskTime true permanently, so
+                    TASK stays faded out for as long as the toggle is on. */}
+                <span style={{
+                  position: 'absolute', top: '50%',
+                  ...(isNarrow
+                    ? { left: '50%', transform: 'translate(-50%, -50%)' }
+                    : { left: showTaskTime ? '0.6rem' : '50%', transform: showTaskTime ? 'translateY(-50%)' : 'translate(-50%, -50%)' }),
+                  transition: isNarrow
+                    ? 'opacity 0.25s'
+                    : 'left 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+                  opacity: isNarrow && showTaskTime ? 0 : 1,
+                  fontSize: '0.5rem', letterSpacing: '0.14em',
+                  color: MODE_TEXT, whiteSpace: 'nowrap',
+                }}>TASK</span>
+                {/* The digits pick up the work colour only in numbers-on mode,
+                    tying the readout back to the phase it's timing. On the
+                    solid-blue peek chip they stay on MODE_TEXT instead — work
+                    blue on a work-blue fill would vanish. */}
                 <span style={{
                   position: 'absolute', top: '50%',
                   ...(isNarrow
                     ? { left: '50%', transform: 'translate(-50%, -50%)' }
                     : { right: '0.6rem', transform: 'translateY(-50%)' }),
                   fontSize: '0.6rem', letterSpacing: '0.04em',
-                  color: MODE_TEXT,
+                  color: taskNumbers ? taskStatus.color : MODE_TEXT,
                   opacity: showTaskTime ? 1 : 0,
-                  transition: 'opacity 0.25s',
+                  transition: 'opacity 0.25s, color 0.25s',
                   whiteSpace: 'nowrap',
                 }}>{taskStatus.time}</span>
               </div>
