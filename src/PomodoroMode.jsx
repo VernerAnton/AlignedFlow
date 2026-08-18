@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { playStartSound, playStopSound, playMicroBreakSound, playShortBreakSound, playLongBreakSound, playDoneSound } from "./sounds";
 import { sendNotification } from "./notifications";
-import { computePhaseDim, computePhaseDeep } from "./dataStore";
+import { computePhaseDim } from "./dataStore";
 
 // Exported so App can size the mode-switcher pill against the same breakpoint.
 export function useWindowWidth() {
@@ -479,7 +479,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
                     unconstrained line of prose would widen the whole panel. */}
                 {!showNumbers && (
                   <div style={{ fontSize: "0.53rem", lineHeight: 1.6, fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.32)", marginBottom: "0.55rem", maxWidth: 235 }}>
-                    Drains as a bar in the pill — hover or tap it to read the time.
+                    Shows just the word TASK in the pill — hover or tap it to read the time.
                   </div>
                 )}
 
@@ -781,13 +781,9 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
       active: taskEnabled,
       showNumbers: taskShowNumbers,
       time: fmtClock(Math.max(0, taskTotalSec - taskElapsed)),
-      // Share of the budget still unspent — it drains rather than fills, so it
-      // reads the same way as the waterline behind it.
-      remaining: taskTotalSec > 0 ? Math.max(0, 100 - (taskElapsed / taskTotalSec) * 100) : 0,
+      // Used as the chip's solid background when the countdown is off — its
+      // only remaining job now that the chip no longer inverts text onto it.
       color: PHASES.work.color,
-      // Paired shade for text on a chip filled with the colour itself. Derived
-      // rather than fixed, since the work colour is editable in the builder.
-      deep: computePhaseDeep(PHASES.work.color),
     });
   }, [taskEnabled, taskShowNumbers, taskElapsed, taskTotalSec, PHASES.work.color, onTaskStatus]);
 
