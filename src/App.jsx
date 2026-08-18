@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import PomodoroMode from './PomodoroMode'
+import PomodoroMode, { useWindowWidth } from './PomodoroMode'
 import EveningMode from './EveningMode'
 import EveningBuilder from './EveningBuilder'
 import PomodoroBuilder from './PomodoroBuilder'
@@ -19,6 +19,10 @@ export default function App() {
   const [mode, setMode]         = useState('work')
   const [prevMode, setPrevMode] = useState(null)
   const [config, setConfig]     = useState(() => loadConfig())
+  // Work mode publishes its task budget here so the switcher pill can carry it
+  // as a segment. Null until work mode has reported once.
+  const [taskStatus, setTaskStatus] = useState(null)
+  const width = useWindowWidth()
   const initRef = useRef(false)
 
   useEffect(() => { saveConfig(config) }, [config])
@@ -42,6 +46,16 @@ export default function App() {
   }
 
   const isBuilder = mode.startsWith('builder-')
+
+  // The task segment belongs to work mode only. Its width is fixed rather than
+  // fitted to the text so a budget ticking under an hour — seven characters
+  // down to five — does not shuffle the buttons beside it.
+  const isNarrow = width < 600
+  const TASK_SEG_W = isNarrow ? 68 : 104
+  const showTask = mode === 'work' && !!taskStatus?.active
+  // Half the segment is subtracted back out so the three buttons keep the exact
+  // position they hold without it, and the task reads as growing off the left.
+  const pillShift = (mode === 'evening' ? -23 : 23) - (showTask ? TASK_SEG_W / 2 : 0)
 
   function onExitEnd() {
     setPrevMode(null)
@@ -76,7 +90,7 @@ export default function App() {
             : 'none',
         }}
       >
-        {mode === 'work' && <PomodoroMode config={config.pomodoro} setConfig={setConfig} />}
+        {mode === 'work' && <PomodoroMode config={config.pomodoro} setConfig={setConfig} onTaskStatus={setTaskStatus} />}
         {mode === 'evening' && <EveningMode config={config.evening} setConfig={setConfig} />}
         {mode === 'builder-work' && <PomodoroBuilder config={config} setConfig={setConfig} onBack={() => switchMode('work')} />}
         {mode === 'builder-evening' && <EveningBuilder config={config} setConfig={setConfig} onBack={() => switchMode('evening')} />}
@@ -87,7 +101,7 @@ export default function App() {
         <div style={{
           position: 'fixed',
           top: '0.85rem',
-          left: `calc(50% + ${mode === 'evening' ? -23 : 23}px)`,
+          left: `calc(50% + ${pillShift}px)`,
           transform: 'translateX(-50%)',
           transition: 'left 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
           display: 'flex',
@@ -98,6 +112,44 @@ export default function App() {
           borderRadius: 6,
           overflow: 'hidden',
         }}>
+          {/* Task budget — collapses to nothing outside work mode, animating in
+              step with the pill's own slide so the buttons never jump. */}
+          {taskStatus && (
+            <div style={{
+              maxWidth: showTask ? TASK_SEG_W : 0,
+              opacity: showTask ? 1 : 0,
+              overflow: 'hidden',
+              flexShrink: 0,
+              transition: 'max-width 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s',
+            }}>
+              <div style={{
+                position: 'relative',
+                width: TASK_SEG_W,
+                padding: isNarrow ? '0.42rem 0.5rem' : '0.42rem 0.7rem',
+                borderRight: '1px solid rgba(255,255,255,0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: isNarrow ? 'center' : 'space-between',
+                gap: 6,
+                fontFamily: "'DM Mono', monospace",
+                whiteSpace: 'nowrap',
+              }}>
+                {/* The label is the first thing to go on a phone — the colour
+                    and the progress rule underneath still identify it. */}
+                {!isNarrow && (
+                  <span style={{ fontSize: '0.5rem', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.28)' }}>TASK</span>
+                )}
+                <span style={{ fontSize: '0.6rem', letterSpacing: '0.04em', color: taskStatus.color }}>{taskStatus.time}</span>
+                <div style={{
+                  position: 'absolute', left: 0, bottom: 0, height: 2,
+                  width: `${taskStatus.pct}%`,
+                  background: taskStatus.color, opacity: 0.75,
+                  transition: 'width 0.6s linear',
+                }} />
+              </div>
+            </div>
+          )}
+
           {[
             { id: 'work',    label: 'WORK'    },
             { id: 'evening', label: 'EVENING' },
