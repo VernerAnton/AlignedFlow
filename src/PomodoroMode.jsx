@@ -495,9 +495,13 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             borderTop: "1px solid rgba(255,255,255,0.12)",
             padding: "0.35rem 1rem",
           }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <CycleEditor blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} phaseId={phaseId} disabled={isPlaying} onJump={(id, newWorkCount) => setPhaseId(id, newWorkCount)} />
-              <svg width="14" height="8" viewBox="0 0 14 8" onClick={() => setCycleEditorOpen(false)} style={{ opacity: 0.4, cursor: "pointer", flexShrink: 0, transform: "rotate(180deg)" }}>
+            <div style={{ position: "relative", display: "flex", alignItems: "center", minHeight: 32 }}>
+              {/* Centered independent of the chevron's width, rather than
+                  space-between shoving it off toward the left edge. */}
+              <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
+                <CycleEditor blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} phaseId={phaseId} disabled={isPlaying} onJump={(id, newWorkCount) => setPhaseId(id, newWorkCount)} />
+              </div>
+              <svg width="14" height="8" viewBox="0 0 14 8" onClick={() => setCycleEditorOpen(false)} style={{ opacity: 0.4, cursor: "pointer", flexShrink: 0, marginLeft: "auto", position: "relative", zIndex: 1, transform: "rotate(180deg)" }}>
                 <polyline points="1,7 7,1 13,7" fill="none" stroke={phase.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
