@@ -20,6 +20,18 @@ export function computePhaseDim(hex) {
   return `rgba(${r},${g},${b},0.32)`;
 }
 
+// Very dark, hue-tinted shade — for text sitting on a chip filled with the
+// colour itself. Mixed toward the app background rather than pure black so it
+// keeps the hue instead of going flat grey. At the work blue this lands around
+// 5:1 against the fill, which small monospace text needs.
+export function computePhaseDeep(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const mix = (c, base) => Math.round(c * 0.1 + base * 0.9);
+  return `rgb(${mix(r, 15)},${mix(g, 14)},${mix(b, 12)})`;
+}
+
 export const DEFAULT_CONFIG = {
   version: 1,
   evening: {
