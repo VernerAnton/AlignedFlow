@@ -846,8 +846,10 @@ export default function EveningRoutine({ config, setConfig }) {
         </div>
       )}
 
-      {/* Floating controls — centered horizontally within the fill area (left edge to rail) */}
-      <div style={{ position: "fixed", bottom: "1.5rem", left: (windowW - railW) / 2, transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: isMobile ? 7 : 9, zIndex: 20 }}>
+      {/* Floating controls — centered horizontally within the fill area (left
+          edge to rail). The fill's own right edge sits at railW-6/-7, not the
+          bare rail width, so that's the figure to centre against here too. */}
+      <div style={{ position: "fixed", bottom: "1.5rem", left: (windowW - (railW - (isMobile ? 6 : 7))) / 2, transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: isMobile ? 7 : 9, zIndex: 20 }}>
 
         {/* ← prev */}
         <button onClick={onPrev} disabled={index === 0} style={{ ...btnBase, width: 38, height: 38, borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", color: index === 0 ? "#2a2a2a" : "rgba(255,255,255,0.55)", fontSize: "1.1rem", cursor: index === 0 ? "default" : "pointer" }}>‹</button>
