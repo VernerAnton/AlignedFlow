@@ -113,6 +113,11 @@ export const DEFAULT_CONFIG = {
     microEnabled: false,
     loopsUntilShort: 3,  // focus blocks per short break (inner loop, micro on only)
     setsUntilLong: 4,    // sets per long break (outer loop; == focus blocks when micro is off)
+    // Task timer — a budget of focus time that runs across the loops rather
+    // than inside them. Off by default; the loop structure alone is the
+    // out-of-the-box behaviour.
+    taskTimerEnabled: false,
+    taskDuration: 50,    // minutes of work-phase time per task
     muted: false,
   },
 };
@@ -155,6 +160,9 @@ export function migratePomodoro(p) {
       p.setsUntilLong = p.loopsUntilLong;
     }
   }
+  if (p.taskTimerEnabled == null) p.taskTimerEnabled = d.taskTimerEnabled;
+  if (p.taskDuration == null) p.taskDuration = d.taskDuration;
+
   delete p.loopsUntilLong; // superseded by loopsUntilShort × setsUntilLong
   return p;
 }
