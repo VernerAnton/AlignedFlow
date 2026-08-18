@@ -293,7 +293,7 @@ const DURATION_RANGES = { work: [5, 50, 1], micro: [0.5, 5, 0.5], short: [1, 15,
 // admin task at one end and a deep-work block at the other.
 const TASK_RANGE = [10, 120, 5];
 
-const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, microEnabled, toggleMicro, loopsUntilShort, setLoopsUntilShort, setsUntilLong, setSetsUntilLong, blocksPerSet, workCount, muted, toggleMuted, taskEnabled, toggleTaskTimer, taskDuration, setTaskDuration, taskElapsed, onResetTask }) => {
+const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, microEnabled, toggleMicro, loopsUntilShort, setLoopsUntilShort, setsUntilLong, setSetsUntilLong, blocksPerSet, workCount, muted, toggleMuted, taskEnabled, toggleTaskTimer, taskDuration, setTaskDuration, taskElapsed, onResetTask, showNumbers, toggleShowNumbers }) => {
   const [open, setOpen] = useState(false);
   const drawerRef = useRef(null);
   const drawerWidth = useWindowWidth();
@@ -466,6 +466,23 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
                   </div>
                 </div>
 
+                {/* Not disabled mid-session — this is how the budget is
+                    displayed, not how it behaves, so it is always safe. */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.55rem" }}>
+                  <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace" }}>COUNTDOWN</div>
+                  <button onClick={toggleShowNumbers} style={{ ...btnBase, padding: "0.28rem 0.65rem", borderRadius: 6, color: showNumbers ? phases.work.color : "rgba(255,255,255,0.25)", fontSize: "0.52rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", border: `1px solid ${showNumbers ? phases.work.color + "44" : "rgba(255,255,255,0.1)"}` }}>
+                    {showNumbers ? "NUMBERS ON" : "NUMBERS OFF"}
+                  </button>
+                </div>
+
+                {/* Width-capped: the drawer sizes to its content, and an
+                    unconstrained line of prose would widen the whole panel. */}
+                {!showNumbers && (
+                  <div style={{ fontSize: "0.53rem", lineHeight: 1.6, fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.32)", marginBottom: "0.55rem", maxWidth: 235 }}>
+                    Drains as a bar in the pill — hover or tap it to read the time.
+                  </div>
+                )}
+
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <div style={{ fontSize: "0.53rem", lineHeight: 1.6, fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.32)" }}>
                     {fmtClock(taskElapsed)} of {fmtDuration(taskDuration)} focus done
@@ -501,6 +518,7 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
   // rest of the runtime timer state, so a reload starts the task fresh.
   const [taskEnabled, setTaskEnabled] = useState(() => config.taskTimerEnabled ?? false);
   const [taskDuration, setTaskDuration] = useState(() => config.taskDuration ?? 50);
+  const [taskShowNumbers, setTaskShowNumbers] = useState(() => config.taskShowNumbers ?? true);
   const [taskElapsed, setTaskElapsed] = useState(0);
   const [taskDone, setTaskDone] = useState(false);
   const taskEnabledRef = useRef(config.taskTimerEnabled ?? false);
@@ -527,6 +545,8 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
     setTaskDone(false);
   };
 
+  const toggleShowNumbers = () => setTaskShowNumbers((v) => !v);
+
   // Starts the budget over without touching the phase timer — the loops carry
   // on undisturbed while the task they are serving changes.
   const onResetTask = () => {
@@ -541,8 +561,8 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
 
   // Persist settings changes back to config
   useEffect(() => {
-    setConfig(prev => ({ ...prev, pomodoro: { ...prev.pomodoro, durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskTimerEnabled: taskEnabled, taskDuration } }));
-  }, [durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskEnabled, taskDuration]);
+    setConfig(prev => ({ ...prev, pomodoro: { ...prev.pomodoro, durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskTimerEnabled: taskEnabled, taskDuration, taskShowNumbers } }));
+  }, [durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskEnabled, taskDuration, taskShowNumbers]);
 
   const PHASES = useMemo(() => {
     const p = config.phases || { work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" }, micro: { color: "#e8899e", tag: "MICRO", label: "Micro Break" }, short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" }, long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" } };
@@ -759,11 +779,14 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
     if (!onTaskStatus) return;
     onTaskStatus({
       active: taskEnabled,
+      showNumbers: taskShowNumbers,
       time: fmtClock(Math.max(0, taskTotalSec - taskElapsed)),
-      pct: taskTotalSec > 0 ? Math.min(100, (taskElapsed / taskTotalSec) * 100) : 0,
+      // Share of the budget still unspent — it drains rather than fills, so it
+      // reads the same way as the waterline behind it.
+      remaining: taskTotalSec > 0 ? Math.max(0, 100 - (taskElapsed / taskTotalSec) * 100) : 0,
       color: PHASES.work.color,
     });
-  }, [taskEnabled, taskElapsed, taskTotalSec, PHASES.work.color, onTaskStatus]);
+  }, [taskEnabled, taskShowNumbers, taskElapsed, taskTotalSec, PHASES.work.color, onTaskStatus]);
 
   // Dismissing the overlay resets the budget and picks the frozen block back
   // up mid-stride, so the loop structure is never reshaped by the task.
@@ -839,7 +862,7 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
         </div>
       </div>
 
-      <SettingsDrawer phases={PHASES} phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} microEnabled={microEnabled} toggleMicro={toggleMicro} loopsUntilShort={loopsUntilShort} setLoopsUntilShort={setLoopsUntilShort} setsUntilLong={setsUntilLong} setSetsUntilLong={setSetsUntilLong} blocksPerSet={blocksPerSet} workCount={workCount} muted={muted} toggleMuted={toggleMuted} taskEnabled={taskEnabled} toggleTaskTimer={toggleTaskTimer} taskDuration={taskDuration} setTaskDuration={setTaskDuration} taskElapsed={taskElapsed} onResetTask={onResetTask} />
+      <SettingsDrawer phases={PHASES} phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} microEnabled={microEnabled} toggleMicro={toggleMicro} loopsUntilShort={loopsUntilShort} setLoopsUntilShort={setLoopsUntilShort} setsUntilLong={setsUntilLong} setSetsUntilLong={setSetsUntilLong} blocksPerSet={blocksPerSet} workCount={workCount} muted={muted} toggleMuted={toggleMuted} taskEnabled={taskEnabled} toggleTaskTimer={toggleTaskTimer} taskDuration={taskDuration} setTaskDuration={setTaskDuration} taskElapsed={taskElapsed} onResetTask={onResetTask} showNumbers={taskShowNumbers} toggleShowNumbers={toggleShowNumbers} />
 
       {taskDone && <TaskCompleteOverlay color={PHASES.work.color} minutes={taskDuration} onContinue={onTaskContinue} />}
     </div>

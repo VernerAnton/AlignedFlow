@@ -22,8 +22,21 @@ export default function App() {
   // Work mode publishes its task budget here so the switcher pill can carry it
   // as a segment. Null until work mode has reported once.
   const [taskStatus, setTaskStatus] = useState(null)
+  // With the countdown hidden the segment is a bare bar, so it can be hovered
+  // or tapped to read the time. A tap self-clears; a hover ends on its own.
+  const [taskHover, setTaskHover] = useState(false)
+  const [taskTapped, setTaskTapped] = useState(false)
+  const tapTimer = useRef(null)
   const width = useWindowWidth()
   const initRef = useRef(false)
+
+  useEffect(() => () => clearTimeout(tapTimer.current), [])
+
+  function peekTask() {
+    setTaskTapped(true)
+    clearTimeout(tapTimer.current)
+    tapTimer.current = setTimeout(() => setTaskTapped(false), 2500)
+  }
 
   useEffect(() => { saveConfig(config) }, [config])
 
@@ -53,9 +66,13 @@ export default function App() {
   const isNarrow = width < 600
   const TASK_SEG_W = isNarrow ? 68 : 104
   const showTask = mode === 'work' && !!taskStatus?.active
-  // Half the segment is subtracted back out so the three buttons keep the exact
-  // position they hold without it, and the task reads as growing off the left.
-  const pillShift = (mode === 'evening' ? -23 : 23) - (showTask ? TASK_SEG_W / 2 : 0)
+  // Nothing is compensated for here: the pill is centred as a whole, so it
+  // stays centred whether or not the task segment is part of it.
+  const pillShift = mode === 'evening' ? -23 : 23
+  // Countdown hidden → the segment is a draining bar, revealing the time only
+  // while hovered or freshly tapped.
+  const taskNumbers = !!taskStatus?.showNumbers
+  const showTaskTime = taskNumbers || taskHover || taskTapped
 
   function onExitEnd() {
     setPrevMode(null)
@@ -113,7 +130,7 @@ export default function App() {
           overflow: 'hidden',
         }}>
           {/* Task budget — collapses to nothing outside work mode, animating in
-              step with the pill's own slide so the buttons never jump. */}
+              step with the pill's own slide. */}
           {taskStatus && (
             <div style={{
               maxWidth: showTask ? TASK_SEG_W : 0,
@@ -122,30 +139,47 @@ export default function App() {
               flexShrink: 0,
               transition: 'max-width 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s',
             }}>
-              <div style={{
-                position: 'relative',
-                width: TASK_SEG_W,
-                padding: isNarrow ? '0.42rem 0.5rem' : '0.42rem 0.7rem',
-                borderRight: '1px solid rgba(255,255,255,0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: isNarrow ? 'center' : 'space-between',
-                gap: 6,
-                fontFamily: "'DM Mono', monospace",
-                whiteSpace: 'nowrap',
-              }}>
-                {/* The label is the first thing to go on a phone — the colour
-                    and the progress rule underneath still identify it. */}
-                {!isNarrow && (
-                  <span style={{ fontSize: '0.5rem', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.28)' }}>TASK</span>
+              <div
+                onMouseEnter={() => setTaskHover(true)}
+                onMouseLeave={() => setTaskHover(false)}
+                onClick={taskNumbers ? undefined : peekTask}
+                style={{
+                  position: 'relative',
+                  width: TASK_SEG_W,
+                  padding: isNarrow ? '0.42rem 0.5rem' : '0.42rem 0.7rem',
+                  borderRight: '1px solid rgba(255,255,255,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: isNarrow ? 'center' : 'space-between',
+                  gap: 6,
+                  fontFamily: "'DM Mono', monospace",
+                  whiteSpace: 'nowrap',
+                  cursor: taskNumbers ? 'default' : 'pointer',
+                }}
+              >
+                {/* The bar is the whole readout when the countdown is off — no
+                    bar alongside the numbers, which was saying it twice. */}
+                {!taskNumbers && (
+                  <div style={{
+                    position: 'absolute', left: 0, top: 0, bottom: 0,
+                    width: `${taskStatus.remaining}%`,
+                    background: taskStatus.color, opacity: 0.3,
+                    transition: 'width 0.6s linear',
+                  }} />
                 )}
-                <span style={{ fontSize: '0.6rem', letterSpacing: '0.04em', color: taskStatus.color }}>{taskStatus.time}</span>
-                <div style={{
-                  position: 'absolute', left: 0, bottom: 0, height: 2,
-                  width: `${taskStatus.pct}%`,
-                  background: taskStatus.color, opacity: 0.75,
-                  transition: 'width 0.6s linear',
-                }} />
+                {/* The label is the first thing to go on a phone. */}
+                {!isNarrow && (
+                  <span style={{ position: 'relative', fontSize: '0.5rem', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.28)' }}>TASK</span>
+                )}
+                {/* Kept in the layout even when hidden, so revealing the time
+                    never changes the pill's width. */}
+                <span style={{
+                  position: 'relative',
+                  fontSize: '0.6rem', letterSpacing: '0.04em',
+                  color: taskStatus.color,
+                  opacity: showTaskTime ? 1 : 0,
+                  transition: 'opacity 0.25s',
+                }}>{taskStatus.time}</span>
               </div>
             </div>
           )}
