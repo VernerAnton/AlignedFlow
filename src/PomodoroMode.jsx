@@ -495,13 +495,16 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             borderTop: "1px solid rgba(255,255,255,0.12)",
             padding: "0.35rem 1rem",
           }}>
-            <div style={{ position: "relative", display: "flex", alignItems: "center", minHeight: 32 }}>
-              {/* Centered independent of the chevron's width, rather than
-                  space-between shoving it off toward the left edge. */}
-              <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
-                <CycleEditor blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} phaseId={phaseId} disabled={isPlaying} onJump={(id, newWorkCount) => setPhaseId(id, newWorkCount)} />
-              </div>
-              <svg width="14" height="8" viewBox="0 0 14 8" onClick={() => setCycleEditorOpen(false)} style={{ opacity: 0.4, cursor: "pointer", flexShrink: 0, marginLeft: "auto", position: "relative", zIndex: 1, transform: "rotate(180deg)" }}>
+            {/* Reserve room for the chevron on the right (and matching
+                breathing room on the left) via padding, so the diamond row
+                gets the rest of the bar's full width to center and wrap
+                within — an absolutely-positioned `left: 50%` wrapper here
+                would instead give it only the half of the bar to the right
+                of center to work with, wrapping it far earlier than it
+                needs to. */}
+            <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center", minHeight: 32, padding: "0 28px" }}>
+              <CycleEditor blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} phaseId={phaseId} disabled={isPlaying} onJump={(id, newWorkCount) => setPhaseId(id, newWorkCount)} />
+              <svg width="14" height="8" viewBox="0 0 14 8" onClick={() => setCycleEditorOpen(false)} style={{ opacity: 0.4, cursor: "pointer", flexShrink: 0, position: "absolute", right: 0, top: "50%", transform: "translateY(-50%) rotate(180deg)" }}>
                 <polyline points="1,7 7,1 13,7" fill="none" stroke={phase.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
