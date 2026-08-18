@@ -68,11 +68,21 @@ export default function App() {
   const isNarrow = width < 600
   const TASK_SEG_W = isNarrow ? 68 : 104
   const showTask = mode === 'work' && !!taskStatus?.active
-  // Half the segment's width is subtracted back out of the pill's own centring
-  // offset when it's showing, so the row's growth is invisible to the three
-  // buttons — they sit at the exact same pixels whether the segment is there
-  // or not.
-  const pillShift = (mode === 'evening' ? -23 : 23) - (showTask ? TASK_SEG_W / 2 : 0)
+  // The coloured fill never spans the whole window: a rail runs down one side
+  // of it — the left in work mode, the right in evening — so centring on the
+  // window always lands off-centre within the colour actually on screen. The
+  // anchor is nudged by half the rail to sit in the middle of the fill, the
+  // same thing evening mode does for its own bottom controls.
+  //
+  // This is what the old hardcoded ±23 was (half a 45px desktop rail edge);
+  // it was simply never updated for the narrower rail on a phone. Mirrors the
+  // railW / fill-edge values in PomodoroMode and EveningMode.
+  const RAIL_W = isNarrow ? 44 : 52
+  const railEdge = RAIL_W - (isNarrow ? 6 : 7)
+  // No pill-width term here, and none needed: translateX(-50%) below centres
+  // the pill on this anchor whatever its own width, so it stays centred as
+  // the task segment grows and collapses.
+  const pillShift = (mode === 'evening' ? -railEdge : railEdge) / 2
   // Countdown off → the chip shows just the word TASK, revealing the time only
   // while hovered or freshly tapped.
   const taskNumbers = !!taskStatus?.showNumbers
