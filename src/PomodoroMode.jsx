@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { playStartSound, playStopSound, playMicroBreakSound, playShortBreakSound, playLongBreakSound } from "./sounds";
+import { createPortal } from "react-dom";
+import { playStartSound, playStopSound, playMicroBreakSound, playShortBreakSound, playLongBreakSound, playDoneSound } from "./sounds";
 import { sendNotification } from "./notifications";
 import { computePhaseDim } from "./dataStore";
 
@@ -199,12 +200,7 @@ const TimerRail = ({ phase, fillPct, isMobile, totalSeconds, timeLeft }) => {
   );
 };
 
-// ── Settings drawer ───────────────────────────────────────────────────────────
-
-// Slider bounds per phase, as [min, max, step] in minutes. Work goes down to
-// 5 min so short focus blocks paired with micro breaks are actually reachable.
-// Micro moves in half minutes — at that length 30 s is a meaningful difference.
-const DURATION_RANGES = { work: [5, 50, 1], micro: [0.5, 5, 0.5], short: [1, 15, 1], long: [1, 35, 1] };
+// ── Duration formatting ───────────────────────────────────────────────────────
 
 // Minutes → label. Whole minutes stay "25m"; halves read as "2m30", and
 // anything under a minute is clearer in seconds outright.
@@ -215,7 +211,113 @@ const fmtDuration = (min) => {
   return sec === 0 ? `${whole}m` : `${whole}m${String(sec).padStart(2, "0")}`;
 };
 
-const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, microEnabled, toggleMicro, loopsUntilShort, setLoopsUntilShort, setsUntilLong, setSetsUntilLong, blocksPerSet, workCount, muted, toggleMuted }) => {
+// Seconds → clock. The task budget is long enough to need an hours field.
+const fmtClock = (s) => {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  return `${h > 0 ? `${h}:` : ""}${mm}:${String(sec).padStart(2, "0")}`;
+};
+
+// ── Task timer ────────────────────────────────────────────────────────────────
+
+// A budget of focus time that runs *across* the loop structure rather than
+// inside it: only work-phase seconds count toward it, so breaks — and the
+// length of a focus block — are free to be whatever suits the body while the
+// task keeps its own clock.
+
+// Corner readout of how much of the task budget is left. Inert by design —
+// clicks fall through to the play/pause surface underneath.
+const TaskBadge = ({ color, elapsed, total, isMobile }) => {
+  const remaining = Math.max(0, total - elapsed);
+  const pct = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0;
+  return (
+    <div style={{
+      // A phone is too narrow to sit beside the mode switcher, so it drops to
+      // the row below rather than shrinking into an unreadable chip.
+      position: "fixed", top: isMobile ? "3.05rem" : "0.85rem", right: "0.9rem", zIndex: 30,
+      pointerEvents: "none",
+      background: "rgba(15,14,12,0.88)",
+      backdropFilter: "blur(8px)",
+      border: "1px solid rgba(255,255,255,0.14)",
+      borderRadius: 6,
+      padding: "0.3rem 0.5rem 0.34rem",
+      display: "flex", flexDirection: "column", gap: 4, minWidth: 82,
+    }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, fontFamily: "'DM Mono', monospace" }}>
+        <span style={{ fontSize: "0.48rem", letterSpacing: "0.14em", color: "rgba(255,255,255,0.3)" }}>TASK</span>
+        <span style={{ fontSize: "0.6rem", letterSpacing: "0.04em", color }}>{fmtClock(remaining)}</span>
+      </div>
+      <div style={{ height: 2, background: "rgba(255,255,255,0.1)", borderRadius: 1, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, opacity: 0.8, transition: "width 0.6s linear" }} />
+      </div>
+    </div>
+  );
+};
+
+// Shown the moment the budget runs out, over a blurred, frozen app. Portalled
+// to the body so the blur covers the mode switcher too — the whole surface
+// goes quiet, which is the point of the interruption.
+const TaskCompleteOverlay = ({ color, minutes, onContinue }) => createPortal(
+  <div style={{
+    position: "fixed", inset: 0, zIndex: 100,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "1.5rem",
+    background: "rgba(15,14,12,0.55)",
+    backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+    animation: "taskFade 0.5s ease both",
+    fontFamily: "Georgia, serif",
+  }}>
+    <div style={{
+      width: "100%", maxWidth: 400, textAlign: "center",
+      background: "rgba(15,14,12,0.72)",
+      border: `1px solid ${color}44`,
+      borderRadius: 10,
+      boxShadow: `0 0 60px ${color}22`,
+      padding: "2rem 1.6rem 1.7rem",
+      animation: "taskRise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both",
+    }}>
+      <div style={{ fontSize: "0.58rem", letterSpacing: "0.22em", textTransform: "uppercase", color, fontFamily: "'DM Mono', monospace", marginBottom: "0.85rem" }}>
+        Task time is up
+      </div>
+      <div style={{ fontSize: "1.35rem", lineHeight: 1.3, color: "#f0ece4", marginBottom: "0.7rem" }}>
+        {fmtDuration(minutes)} of focus, done.
+      </div>
+      <div style={{ fontSize: "0.8rem", lineHeight: 1.6, color: "rgba(240,236,228,0.5)", marginBottom: "1.6rem" }}>
+        Close this one out and line up what's next. The block you were in picks
+        up exactly where it stopped.
+      </div>
+      <button
+        onClick={onContinue}
+        style={{
+          width: "100%", padding: "0.75rem 1rem",
+          border: `1px solid ${color}`, borderRadius: 7,
+          background: `${color}28`, color,
+          fontFamily: "'DM Mono', monospace", fontSize: "0.7rem",
+          letterSpacing: "0.18em", fontWeight: 500, cursor: "pointer",
+          transition: "background 0.2s",
+        }}
+      >
+        START NEXT TASK
+      </button>
+    </div>
+  </div>,
+  document.body
+);
+
+// ── Settings drawer ───────────────────────────────────────────────────────────
+
+// Slider bounds per phase, as [min, max, step] in minutes. Work goes down to
+// 5 min so short focus blocks paired with micro breaks are actually reachable.
+// Micro moves in half minutes — at that length 30 s is a meaningful difference.
+const DURATION_RANGES = { work: [5, 50, 1], micro: [0.5, 5, 0.5], short: [1, 15, 1], long: [1, 35, 1] };
+
+// Task budget bounds, [min, max, step] in minutes. Wide enough for a short
+// admin task at one end and a deep-work block at the other.
+const TASK_RANGE = [10, 120, 5];
+
+const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, microEnabled, toggleMicro, loopsUntilShort, setLoopsUntilShort, setsUntilLong, setSetsUntilLong, blocksPerSet, workCount, muted, toggleMuted, taskEnabled, toggleTaskTimer, taskDuration, setTaskDuration, taskElapsed, onResetTask }) => {
   const [open, setOpen] = useState(false);
   const drawerRef = useRef(null);
   const drawerWidth = useWindowWidth();
@@ -366,6 +468,39 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
               <span style={{ color: "rgba(255,255,255,0.2)" }}> · {blocksPerSet * setsUntilLong} focus blocks per cycle</span>
             </div>
           </div>
+
+          {/* Task timer — deliberately its own section, below the loop
+              structure it cuts across. Coloured as work, since work-phase
+              seconds are the only thing it counts. */}
+          <div style={{ marginTop: "1rem", paddingTop: "0.85rem", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: taskEnabled ? "0.7rem" : 0 }}>
+              <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace" }}>TASK TIMER</div>
+              <button onClick={toggleTaskTimer} disabled={isPlaying} style={{ ...btnBase, padding: "0.28rem 0.65rem", borderRadius: 6, cursor: isPlaying ? "default" : "pointer", color: taskEnabled ? phases.work.color : "rgba(255,255,255,0.25)", fontSize: "0.52rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", border: `1px solid ${taskEnabled ? phases.work.color + "44" : "rgba(255,255,255,0.1)"}` }}>
+                {taskEnabled ? "TASK ON" : "TASK OFF"}
+              </button>
+            </div>
+
+            {taskEnabled && (
+              <>
+                <div style={{ marginBottom: "0.6rem" }}>
+                  <div style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: "0.35rem" }}>FOCUS TIME PER TASK</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <input type="range" min={TASK_RANGE[0]} max={TASK_RANGE[1]} step={TASK_RANGE[2]} value={taskDuration} onChange={(e) => setTaskDuration(Number(e.target.value))} disabled={isPlaying} style={{ flex: 1, accentColor: phases.work.color, colorScheme: "dark" }} />
+                    <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: phases.work.color, minWidth: "42px" }}>{fmtDuration(taskDuration)}</span>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontSize: "0.53rem", lineHeight: 1.6, fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.32)" }}>
+                    {fmtClock(taskElapsed)} of {fmtDuration(taskDuration)} focus done
+                  </div>
+                  {/* Enabled mid-session on purpose — switching task early is
+                      the common case, and it should not need a pause. */}
+                  <button onClick={onResetTask} style={{ ...btnBase, padding: "0.26rem 0.6rem", borderRadius: 6, color: "rgba(255,255,255,0.4)", fontSize: "0.52rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", flexShrink: 0 }}>NEW TASK</button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -385,6 +520,14 @@ export default function AlignedFlow({ config, setConfig }) {
   const [loopsUntilShort, setLoopsUntilShort] = useState(() => config.loopsUntilShort ?? 3);
   const [setsUntilLong, setSetsUntilLong] = useState(() => config.setsUntilLong ?? 4);
   const [muted, setMuted] = useState(() => config.muted ?? false);
+  // Task timer — a focus-time budget that spans the loops. taskElapsed counts
+  // only work-phase seconds; it is intentionally not persisted, matching the
+  // rest of the runtime timer state, so a reload starts the task fresh.
+  const [taskEnabled, setTaskEnabled] = useState(() => config.taskTimerEnabled ?? false);
+  const [taskDuration, setTaskDuration] = useState(() => config.taskDuration ?? 50);
+  const [taskElapsed, setTaskElapsed] = useState(0);
+  const [taskDone, setTaskDone] = useState(false);
+  const taskEnabledRef = useRef(config.taskTimerEnabled ?? false);
   const mutedRef = useRef(config.muted ?? false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
 
@@ -398,6 +541,23 @@ export default function AlignedFlow({ config, setConfig }) {
     if (!next && phaseId === "micro") handlePhaseChange("work");
   };
 
+  const toggleTaskTimer = () => {
+    const next = !taskEnabled;
+    setTaskEnabled(next);
+    taskEnabledRef.current = next;
+    // A budget only means something from the moment it is set, so both
+    // switching on and switching off start the count over.
+    setTaskElapsed(0);
+    setTaskDone(false);
+  };
+
+  // Starts the budget over without touching the phase timer — the loops carry
+  // on undisturbed while the task they are serving changes.
+  const onResetTask = () => {
+    setTaskElapsed(0);
+    setTaskDone(false);
+  };
+
   // With micro breaks off, every focus block ends in a short break — the
   // original single-loop behaviour.
   const blocksPerSet = microEnabled ? loopsUntilShort : 1;
@@ -405,8 +565,8 @@ export default function AlignedFlow({ config, setConfig }) {
 
   // Persist settings changes back to config
   useEffect(() => {
-    setConfig(prev => ({ ...prev, pomodoro: { ...prev.pomodoro, durations, microEnabled, loopsUntilShort, setsUntilLong, muted } }));
-  }, [durations, microEnabled, loopsUntilShort, setsUntilLong, muted]);
+    setConfig(prev => ({ ...prev, pomodoro: { ...prev.pomodoro, durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskTimerEnabled: taskEnabled, taskDuration } }));
+  }, [durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskEnabled, taskDuration]);
 
   const PHASES = useMemo(() => {
     const p = config.phases || { work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" }, micro: { color: "#e8899e", tag: "MICRO", label: "Micro Break" }, short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" }, long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" } };
@@ -471,11 +631,15 @@ export default function AlignedFlow({ config, setConfig }) {
           const delta = Math.floor((now - lastTickRef.current) / 1000);
           if (delta > 0) {
             setTimeLeft((t) => Math.max(0, t - delta));
+            // Work is the only phase the task budget is spent on — breaks of
+            // every length leave it untouched.
+            if (taskEnabledRef.current && phaseIdRef.current === "work") setTaskElapsed((s) => s + delta);
             lastTickRef.current += delta * 1000; // Keep remainder for next tick
           }
         } else {
           lastTickRef.current = now;
           setTimeLeft((t) => Math.max(0, t - 1));
+          if (taskEnabledRef.current && phaseIdRef.current === "work") setTaskElapsed((s) => s + 1);
         }
       };
     }
@@ -597,6 +761,30 @@ export default function AlignedFlow({ config, setConfig }) {
     }
   }, [timeLeft, isPlaying]);
 
+  // ── Task budget exhausted ─────────────────────────────────────────────
+  // Fires wherever it lands inside a focus block — that is the whole point of
+  // the feature, so the block is frozen rather than run to its end. Pausing
+  // here also stops the phase from auto-advancing if the budget happens to run
+  // out exactly on 0:00; resuming lets that transition happen as usual.
+  const taskTotalSec = taskDuration * 60;
+  useEffect(() => {
+    if (!taskEnabled || taskDone || !isPlaying) return;
+    if (taskElapsed < taskTotalSec) return;
+    setIsPlaying(false); isPlayingRef.current = false;
+    setTaskDone(true);
+    playDoneSound(mutedRef.current);
+    sendNotification("Task time is up", `${fmtDuration(taskDuration)} of focus done — on to the next task`);
+  }, [taskElapsed, taskEnabled, taskDone, isPlaying, taskTotalSec]);
+
+  // Dismissing the overlay resets the budget and picks the frozen block back
+  // up mid-stride, so the loop structure is never reshaped by the task.
+  const onTaskContinue = () => {
+    setTaskElapsed(0);
+    setTaskDone(false);
+    setIsPlaying(true); isPlayingRef.current = true;
+    playStartSound(mutedRef.current);
+  };
+
   // Manual phase change (from drawer)
   const handlePhaseChange = (id) => {
     setPhaseId(id); phaseIdRef.current = id;
@@ -634,7 +822,9 @@ export default function AlignedFlow({ config, setConfig }) {
 
   return (
     <div style={{ position: "relative", minHeight: "100%", background: "#0f0e0c", fontFamily: "Georgia, serif", overflow: "hidden" }}>
-      <style dangerouslySetInnerHTML={{ __html: `.pomo-card::-webkit-scrollbar{display:none}` }} />
+      <style dangerouslySetInnerHTML={{ __html: `.pomo-card::-webkit-scrollbar{display:none}
+@keyframes taskFade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes taskRise { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }` }} />
 
       {/* Background fill — tap to play/pause */}
       <div onClick={onPlayPause} style={{ position: "absolute", bottom: 0, left: isMobile ? railW - 6 : railW - 7, right: 0, height: `${fillPct}%`, background: phase.colorDim, transition: "background 0.6s ease", cursor: "pointer", zIndex: 0 }} />
@@ -660,7 +850,11 @@ export default function AlignedFlow({ config, setConfig }) {
         </div>
       </div>
 
-      <SettingsDrawer phases={PHASES} phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} microEnabled={microEnabled} toggleMicro={toggleMicro} loopsUntilShort={loopsUntilShort} setLoopsUntilShort={setLoopsUntilShort} setsUntilLong={setsUntilLong} setSetsUntilLong={setSetsUntilLong} blocksPerSet={blocksPerSet} workCount={workCount} muted={muted} toggleMuted={toggleMuted} />
+      {taskEnabled && <TaskBadge color={PHASES.work.color} elapsed={taskElapsed} total={taskTotalSec} isMobile={isMobile} />}
+
+      <SettingsDrawer phases={PHASES} phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} microEnabled={microEnabled} toggleMicro={toggleMicro} loopsUntilShort={loopsUntilShort} setLoopsUntilShort={setLoopsUntilShort} setsUntilLong={setsUntilLong} setSetsUntilLong={setSetsUntilLong} blocksPerSet={blocksPerSet} workCount={workCount} muted={muted} toggleMuted={toggleMuted} taskEnabled={taskEnabled} toggleTaskTimer={toggleTaskTimer} taskDuration={taskDuration} setTaskDuration={setTaskDuration} taskElapsed={taskElapsed} onResetTask={onResetTask} />
+
+      {taskDone && <TaskCompleteOverlay color={PHASES.work.color} minutes={taskDuration} onContinue={onTaskContinue} />}
     </div>
   );
 }
