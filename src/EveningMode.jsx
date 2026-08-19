@@ -767,7 +767,7 @@ export default function EveningRoutine({ config, setConfig }) {
                     fontSize: "0.9rem", letterSpacing: "0.3em", textTransform: "uppercase",
                     fontFamily: "'DM Mono', monospace", color: COLOR, opacity: 0.9,
                   }}>
-                    Switch Sides
+                    Switch Sides — {switchSecsLeft}s
                   </div>
                 </div>
               )}
