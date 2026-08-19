@@ -93,13 +93,18 @@ export function playLongBreakSound(muted) {
   playTone(ctx, 523.25, now + 0.08, 1.2, 'sine', 0.08, 0.10, 0.60);
 }
 
-// Satisfying "done" chime — quick bright ping
+// Satisfying "done" chime — the true end of the whole routine, so it's built
+// to feel bigger and more resolved than a single exercise finishing: a warm
+// low root+fifth pad underneath the original bright two-note flourish, held
+// longer (~1.3s total vs ~0.6s) so it reads as "everything is done."
 export function playDoneSound(muted) {
   if (muted) return;
   const ctx = getAudioContext();
   const now = ctx.currentTime;
-  playTone(ctx, 880, now, 0.35, 'sine', 0.25, 0.01, 0.25);
-  playTone(ctx, 1108.73, now + 0.12, 0.30, 'sine', 0.18, 0.01, 0.25);
+  playTone(ctx, 110.00, now, 1.10, 'sine', 0.14, 0.05, 0.50);       // A2 root pad
+  playTone(ctx, 164.81, now + 0.03, 1.05, 'sine', 0.10, 0.05, 0.50); // E3 fifth pad
+  playTone(ctx, 880.00, now + 0.10, 0.40, 'sine', 0.25, 0.01, 0.28); // A5
+  playTone(ctx, 1108.73, now + 0.24, 0.45, 'sine', 0.20, 0.01, 0.30); // C#6
 }
 
 // ── Evening Mode — Bilateral Switch Sounds ──────────────────────────────
@@ -132,14 +137,30 @@ export function playSide2Chime(muted) {
   playTone(ctx, 440, now + 0.16, 0.15, 'sine', 0.25, 0.01, 0.08);
 }
 
+// Ending tick — warm low tock, once per second during the final
+// EXERCISE_END_LEAD_COUNT seconds before an exercise finishes. Deliberately
+// different from the switch pulse tone (220Hz sine) in both pitch and
+// waveform — a fourth lower, and triangle instead of sine — so the two read
+// as different events by ear alone, without needing to look at the screen.
+// ~175Hz triangle, 90ms, volume 0.16
+export function playEndingTick(muted) {
+  if (muted) return;
+  const ctx = getAudioContext();
+  const now = ctx.currentTime;
+  playTone(ctx, 174.61, now, 0.09, 'triangle', 0.16, 0.01, 0.05);
+}
+
 // Exercise complete — descending triangle tone when exercise finishes → transition
-// Distinct from sine-based switch sounds; signals "get ready for next position"
+// Distinct from sine-based switch sounds; signals "get ready for next position".
+// Resolves down a full octave (C5 → G4 → C4) so the close feels landed,
+// more substantial than a single beep.
 export function playExerciseCompleteSound(muted) {
   if (muted) return;
   const ctx = getAudioContext();
   const now = ctx.currentTime;
   playTone(ctx, 523.25, now, 0.20, 'triangle', 0.20, 0.02, 0.12);
   playTone(ctx, 392.00, now + 0.22, 0.25, 'triangle', 0.18, 0.02, 0.15);
+  playTone(ctx, 261.63, now + 0.46, 0.35, 'triangle', 0.20, 0.02, 0.22);
 }
 
 // Exercise start — bright rising two-note ping. Marks "go" at the end of the
