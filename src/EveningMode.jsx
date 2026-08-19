@@ -4,6 +4,10 @@ import { sendNotification } from "./notifications";
 import { computeSectionColors } from "./dataStore";
 
 const SWITCH_RING_COUNT = 5;
+// Seconds before the end of the switch window where the soft pulse tone starts.
+// Below that the window is silent — a long switch shouldn't tick like a
+// metronome at bedtime. The glow pulse stays visible throughout regardless.
+const SWITCH_PULSE_COUNT = 15;
 // Final seconds of the get-into-position gap that show rings + a 3/2/1 number
 const TRANSITION_RING_COUNT = 3;
 
@@ -247,6 +251,7 @@ export default function EveningRoutine({ config, setConfig }) {
   // Pulse + ring tones — fire once per second tick during switching
   useEffect(() => {
     if (!isPlaying || phase !== "exercise" || subPhase !== "switching") return;
+    if (switchSecsLeft > SWITCH_PULSE_COUNT) return;
     if (switchSecsLeft > SWITCH_RING_COUNT) {
       playPulseTone(mutedRef.current);
     } else if (switchSecsLeft > 0) {
@@ -762,7 +767,7 @@ export default function EveningRoutine({ config, setConfig }) {
                     fontSize: "0.9rem", letterSpacing: "0.3em", textTransform: "uppercase",
                     fontFamily: "'DM Mono', monospace", color: COLOR, opacity: 0.9,
                   }}>
-                    Switch Sides
+                    Switch Sides — {switchSecsLeft}s
                   </div>
                 </div>
               )}
