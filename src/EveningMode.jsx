@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
-import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playExerciseStartSound, playDoneSound } from "./sounds";
+import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playExerciseStartSound, playDoneSound, playEndingTick } from "./sounds";
 import { sendNotification } from "./notifications";
 import { computeSectionColors } from "./dataStore";
 
@@ -10,6 +10,9 @@ const SWITCH_RING_COUNT = 5;
 const SWITCH_PULSE_COUNT = 15;
 // Final seconds of the get-into-position gap that show rings + a 3/2/1 number
 const TRANSITION_RING_COUNT = 3;
+// Seconds before an exercise ends where the warning tick starts — gives the
+// completion sound a runway instead of arriving as a single surprise beep.
+const EXERCISE_END_LEAD_COUNT = 8;
 
 function getEffectiveDuration(ex, switchBuffer) {
   return ex.bilateral ? ex.duration + switchBuffer : ex.duration;
@@ -256,6 +259,16 @@ export default function EveningRoutine({ config, setConfig }) {
       playPulseTone(mutedRef.current);
     } else if (switchSecsLeft > 0) {
       playRingTone(mutedRef.current);
+    }
+  }, [timeLeft]);
+
+  // Ending tick — warns the exercise is about to finish, once per second for
+  // the final EXERCISE_END_LEAD_COUNT seconds. Skips the switch window itself
+  // so it never overlaps the pulse/ring tones above.
+  useEffect(() => {
+    if (!isPlaying || phase !== "exercise" || subPhase === "switching") return;
+    if (timeLeft > 0 && timeLeft <= EXERCISE_END_LEAD_COUNT) {
+      playEndingTick(mutedRef.current);
     }
   }, [timeLeft]);
 
