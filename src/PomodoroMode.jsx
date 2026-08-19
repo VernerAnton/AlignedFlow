@@ -762,10 +762,20 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
   // the feature, so the block is frozen rather than run to its end. Pausing
   // here also stops the phase from auto-advancing if the budget happens to run
   // out exactly on 0:00; resuming lets that transition happen as usual.
+  //
+  // Only while the current phase is work, though — if the budget and the
+  // focus block happen to end on the exact same tick, the "hit 0" effect
+  // above has already flipped phaseIdRef to a break by the time this runs
+  // (it's defined earlier, and effects fire in that order within one commit),
+  // so this simply skips showing the popup right before a break anyway. The
+  // budget stays spent — nothing increments it further while on a break — and
+  // this fires for real ~1s after work resumes, once the next tick pushes
+  // taskElapsed past the total again with phaseIdRef back to "work".
   const taskTotalSec = taskDuration * 60;
   useEffect(() => {
     if (!taskEnabled || taskDone || !isPlaying) return;
     if (taskElapsed < taskTotalSec) return;
+    if (phaseIdRef.current !== "work") return;
     setIsPlaying(false); isPlayingRef.current = false;
     setTaskDone(true);
     playDoneSound(mutedRef.current);
