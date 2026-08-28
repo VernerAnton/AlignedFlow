@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { computeSectionColors, exportConfig, validateAndParseConfig, nextId, DEFAULT_CONFIG } from "./dataStore";
+import { computeSectionColors, getActivePreset, patchPreset, nextId, DEFAULT_CONFIG } from "./dataStore";
+import PresetBar from "./PresetBar";
 import VersionStamp from "./VersionStamp";
 
 const FONT = "'DM Mono', monospace";
@@ -7,13 +8,12 @@ const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rg
 const btnSmall = { border: "1px solid rgba(255,255,255,0.15)", background: "transparent", borderRadius: 6, color: "rgba(255,255,255,0.5)", fontFamily: FONT, fontSize: "0.6rem", letterSpacing: "0.08em", cursor: "pointer", padding: "0.3rem 0.55rem" };
 const btnDanger = { ...btnSmall, borderColor: "rgba(200,80,80,0.4)", color: "#c85050" };
 
-export default function EveningBuilder({ config, setConfig, onBack }) {
-  const [evening, setEvening] = useState(config.evening);
+export default function EveningBuilder({ store, setStore, onBack }) {
+  const active = getActivePreset(store);
+  const [evening, setEvening] = useState(active);
   const [expandedCard, setExpandedCard] = useState(null);
   const [showSections, setShowSections] = useState(false);
-  const [importError, setImportError] = useState(null);
   const [showResetMenu, setShowResetMenu] = useState(false);
-  const fileRef = useRef(null);
   const resetRef = useRef(null);
 
   useEffect(() => {
@@ -64,11 +64,21 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
     }
   };
 
-  // Auto-save
+  // Auto-save. The write targets the preset this builder opened on, captured
+  // at mount: switching preset remounts the builder, and a debounce still in
+  // flight must not land in whichever routine was picked next.
+  const editingId = useRef(store.activeId);
+  const draftRef = useRef(evening);
+  draftRef.current = evening;
   useEffect(() => {
-    const t = setTimeout(() => setConfig(prev => ({ ...prev, evening })), 300);
+    const t = setTimeout(() => setStore(s => patchPreset(s, editingId.current, draftRef.current)), 300);
     return () => clearTimeout(t);
   }, [evening]);
+
+  // Leaving the builder — going back, or switching preset — cancels that
+  // pending timeout, so the last keystrokes are flushed on the way out
+  // instead of being lost with it.
+  useEffect(() => () => setStore(s => patchPreset(s, editingId.current, draftRef.current)), []);
 
   const updateExercise = (id, patch) => {
     setEvening(prev => ({
@@ -121,24 +131,6 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
     setEvening(prev => ({ ...prev, sections: prev.sections.filter((_, i) => i !== idx) }));
   };
 
-  const handleImport = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setImportError(null);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const result = validateAndParseConfig(ev.target.result);
-      if (result.ok) {
-        setConfig(result.config);
-        setEvening(result.config.evening);
-      } else {
-        setImportError(result.error);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  };
-
   const updateStep = (exId, stepIdx, value) => {
     setEvening(prev => ({
       ...prev,
@@ -186,8 +178,6 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
 
   return (
     <div style={{ position: "relative", height: "100%", background: "#0f0e0c", overflow: "auto", fontFamily: FONT, color: "#f0ece4", WebkitOverflowScrolling: "touch" }}>
-      <input ref={fileRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
-
       {/* Header */}
       <div style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(15,14,12,0.95)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "0.7rem 1rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.7rem" }}>
@@ -214,15 +204,9 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
               </div>
             )}
           </div>
-          <button onClick={() => exportConfig(config)} style={btnSmall}>EXPORT</button>
-          <button onClick={() => fileRef.current?.click()} style={btnSmall}>IMPORT</button>
         </div>
       </div>
-      {importError && (
-        <div style={{ padding: "0.5rem 1rem", background: "rgba(200,80,80,0.12)", color: "#c85050", fontSize: "0.7rem" }}>
-          Import failed: {importError}
-        </div>
-      )}
+      <PresetBar kind="evening" store={store} setStore={setStore} />
 
       <div style={{ padding: "1rem", maxWidth: 600, margin: "0 auto" }}>
 
