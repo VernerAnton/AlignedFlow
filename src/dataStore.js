@@ -1,7 +1,4 @@
-// ── Data store: defaults, persistence, color computation, export/import ──
-
-const STORAGE_KEY = "alignedflow-config";
-const SESSION_KEY = "alignedflow-session";
+// ── Data store: defaults, presets, persistence, colors, export/import ──
 
 export function computeSectionColors(hex) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -128,17 +125,21 @@ export const DEFAULT_CONFIG = {
 
 // ── Migration ──
 
-// Brings a stored/imported pomodoro config up to the current shape in place.
-// Configs written before micro breaks existed carry a flat `loopsUntilLong`
-// (focus blocks until a long break). Since those configs also predate the
-// micro toggle they land with micro off, where a set is exactly one focus
-// block — so the old count carries straight over and the cadence is
+// Brings a stored/imported pomodoro preset body up to the current shape in
+// place. Configs written before micro breaks existed carry a flat
+// `loopsUntilLong` (focus blocks until a long break). Since those configs also
+// predate the micro toggle they land with micro off, where a set is exactly
+// one focus block — so the old count carries straight over and the cadence is
 // unchanged. Only a config that already opted into micro breaks needs the
 // count split across the two loops.
 export function migratePomodoro(p) {
   const d = DEFAULT_CONFIG.pomodoro;
-  if (!p.phases) p.phases = structuredClone(d.phases);
-  else if (!p.phases.micro) p.phases.micro = { ...d.phases.micro };
+  // Every phase must exist and be complete: the runtime looks phases up by id
+  // and would render nothing for a missing one. A preset written by hand or by
+  // an AI often names only the phases it meant to change.
+  p.phases = Object.fromEntries(
+    Object.entries(d.phases).map(([id, def]) => [id, { ...def, ...(p.phases?.[id] || {}) }])
+  );
 
   if (!p.workSummary) p.workSummary = d.workSummary;
   if (!p.workHeading) p.workHeading = d.workHeading;
@@ -148,7 +149,12 @@ export function migratePomodoro(p) {
   if (!p.shortBreakHeading) p.shortBreakHeading = d.shortBreakHeading;
   if (!p.longBreakSummary) p.longBreakSummary = d.longBreakSummary;
   if (!p.longBreakHeading) p.longBreakHeading = d.longBreakHeading;
-  if (!Array.isArray(p.microBreakExercises)) p.microBreakExercises = structuredClone(d.microBreakExercises);
+  // The four content lists likewise: a preset that only sets timings is a
+  // legitimate thing to ask an AI for, and it should inherit the rest rather
+  // than render an empty panel.
+  for (const key of ["workItems", "microBreakExercises", "shortBreakExercises", "longBreakExercises"]) {
+    if (!Array.isArray(p[key])) p[key] = structuredClone(d[key]);
+  }
 
   if (!p.durations) p.durations = { ...d.durations };
   else if (p.durations.micro == null) p.durations.micro = d.durations.micro;
@@ -172,34 +178,175 @@ export function migratePomodoro(p) {
   return p;
 }
 
-// ── Persistence ──
-
-export function loadConfig() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.version === 1) {
-        migratePomodoro(parsed.pomodoro);
-        return parsed;
-      }
-    }
-  } catch (e) {
-    // corrupted — fall back to defaults
-  }
-  return structuredClone(DEFAULT_CONFIG);
+// The evening equivalent. Evening has never changed shape, so this only fills
+// gaps left by a hand-written or AI-written preset that omitted the settings.
+export function migrateEvening(e) {
+  const d = DEFAULT_CONFIG.evening;
+  if (!Array.isArray(e.sections)) e.sections = structuredClone(d.sections);
+  if (!Array.isArray(e.exercises)) e.exercises = [];
+  if (e.switchBuffer == null) e.switchBuffer = d.switchBuffer;
+  if (e.transitionTime == null) e.transitionTime = d.transitionTime;
+  if (e.muted == null) e.muted = d.muted;
+  return e;
 }
 
-export function saveConfig(config) {
+const MIGRATE = { work: migratePomodoro, evening: migrateEvening };
+
+// ── Presets ──
+//
+// A preset is one complete routine: everything a mode needs to run, plus an
+// id and a name. Work and evening keep entirely separate lists in separate
+// localStorage keys, so importing or resetting one can never reach the other.
+//
+// Presets hold full copies rather than referencing a shared exercise library.
+// That keeps an exported preset genuinely self-contained — the file you hand
+// to (or get back from) an AI is the whole routine, with nothing to resolve.
+
+export const PRESETS_VERSION = 2;
+
+const LEGACY_KEY  = "alignedflow-config";
+const STORE_KEYS  = { work: "alignedflow-work-presets", evening: "alignedflow-evening-presets" };
+const SESSION_KEY = "alignedflow-session";
+
+export const KINDS = ["work", "evening"];
+export const KIND_LABELS = { work: "work", evening: "evening" };
+
+// The body of a preset is everything except the id/name wrapper, so defaults
+// come straight from the shipped config.
+const DEFAULT_BODY = { work: () => structuredClone(DEFAULT_CONFIG.pomodoro), evening: () => structuredClone(DEFAULT_CONFIG.evening) };
+
+export function defaultPresetBody(kind) {
+  return DEFAULT_BODY[kind]();
+}
+
+export function makePresetId() {
+  return `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+// Names are how presets are told apart in the switcher, so a duplicate name is
+// worse than an ugly one — " 2", " 3" … until it is unique.
+export function uniquePresetName(name, presets, ignoreId = null) {
+  const taken = new Set(presets.filter(p => p.id !== ignoreId).map(p => p.name));
+  if (!taken.has(name)) return name;
+  let n = 2;
+  while (taken.has(`${name} ${n}`)) n++;
+  return `${name} ${n}`;
+}
+
+function makeStore(kind, body, name = "Default") {
+  const preset = { id: makePresetId(), name, ...MIGRATE[kind](body) };
+  return { version: PRESETS_VERSION, activeId: preset.id, presets: [preset] };
+}
+
+// Guarantees a usable store out of anything: repairs a missing/empty preset
+// list and an activeId pointing at a preset that no longer exists, so a
+// corrupted key degrades to defaults rather than a blank screen.
+function normalizeStore(kind, store) {
+  if (!store || typeof store !== "object" || !Array.isArray(store.presets) || !store.presets.length) {
+    return makeStore(kind, defaultPresetBody(kind));
+  }
+  store.version = PRESETS_VERSION;
+  store.presets = store.presets.map(p => {
+    const preset = { ...p, id: p.id || makePresetId(), name: p.name || "Untitled" };
+    return MIGRATE[kind](preset);
+  });
+  if (!store.presets.some(p => p.id === store.activeId)) store.activeId = store.presets[0].id;
+  return store;
+}
+
+// ── Persistence ──
+
+// Reads the v1 single-blob config, which held both modes together. Returns the
+// requested mode's body, or null if there is nothing to migrate from.
+function readLegacyBody(kind) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    const raw = localStorage.getItem(LEGACY_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== 1) return null;
+    const body = kind === "work" ? parsed.pomodoro : parsed.evening;
+    return body && typeof body === "object" ? body : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// The v1 key is deliberately never deleted. It costs a few KB and is the only
+// copy of a routine that predates presets, so it stays as a rollback if this
+// migration ever turns out to be wrong.
+export function loadPresets(kind) {
+  try {
+    const raw = localStorage.getItem(STORE_KEYS[kind]);
+    if (raw) return normalizeStore(kind, JSON.parse(raw));
+  } catch (e) {
+    // corrupted — fall through to migration/defaults
+  }
+  const legacy = readLegacyBody(kind);
+  if (legacy) return makeStore(kind, legacy);
+  return makeStore(kind, defaultPresetBody(kind));
+}
+
+export function savePresets(kind, store) {
+  try {
+    localStorage.setItem(STORE_KEYS[kind], JSON.stringify(store));
   } catch (e) {
     // localStorage full or unavailable — silent fail
   }
 }
 
+export function getActivePreset(store) {
+  return store.presets.find(p => p.id === store.activeId) || store.presets[0];
+}
+
+// ── Store operations ──
+//
+// Pure store → store transforms, shared by App and both builders so the
+// switcher and the builder's preset row can never disagree about what a
+// rename or a delete means.
+
+export function selectPreset(store, id) {
+  if (!store.presets.some(p => p.id === id) || id === store.activeId) return store;
+  return { ...store, activeId: id };
+}
+
+export function patchPreset(store, id, patch) {
+  return { ...store, presets: store.presets.map(p => (p.id === id ? { ...p, ...patch, id: p.id, name: p.name } : p)) };
+}
+
+export function renamePreset(store, id, name) {
+  const clean = (name || "").trim() || "Untitled";
+  return { ...store, presets: store.presets.map(p => (p.id === id ? { ...p, name: uniquePresetName(clean, store.presets, id) } : p)) };
+}
+
+// Imports and new presets always land as additions — nothing an import does
+// can overwrite a routine that is already there.
+export function addPreset(store, kind, body, name, { activate = true } = {}) {
+  const preset = { ...body, id: makePresetId(), name: uniquePresetName((name || "Untitled").trim(), store.presets) };
+  const next = { ...store, presets: [...store.presets, preset] };
+  if (activate) next.activeId = preset.id;
+  return { store: next, preset };
+}
+
+export function duplicatePreset(store, id) {
+  const src = store.presets.find(p => p.id === id);
+  if (!src) return { store, preset: null };
+  const { id: _drop, name, ...body } = structuredClone(src);
+  return addPreset(store, null, body, `${name} copy`);
+}
+
+// The last preset is never deletable — a mode with no routine has nothing to
+// render. Deleting the active one falls back to its neighbour.
+export function removePreset(store, id) {
+  if (store.presets.length <= 1) return store;
+  const idx = store.presets.findIndex(p => p.id === id);
+  if (idx === -1) return store;
+  const presets = store.presets.filter(p => p.id !== id);
+  const activeId = store.activeId === id ? presets[Math.min(idx, presets.length - 1)].id : store.activeId;
+  return { ...store, presets, activeId };
+}
+
 // Pomodoro's in-progress cycle position (phase + block count) — separate from
-// the settings blob above since it's transient session state, not something
+// the presets above since it's transient session state, not something
 // export/import should carry. No versioning needed: it's a flat, disposable
 // shape that just falls back to defaults if missing or malformed.
 export function loadSession() {
@@ -220,42 +367,200 @@ export function saveSession(session) {
   }
 }
 
-// ── Export / Import ──
+// Switching work preset changes the cycle length underneath the diamonds, so
+// the stored block count would point at a block that no longer exists — the
+// same reason toggling micro breaks resets it. Cleared on switch.
+export function clearSession() {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch (e) {
+    // unavailable — nothing to clear
+  }
+}
 
-export function exportConfig(config) {
-  const json = JSON.stringify(config, null, 2);
-  const blob = new Blob([json], { type: "application/json" });
+// ── Export ──
+
+function download(obj, filename) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  const date = new Date().toISOString().slice(0, 10);
-  a.download = `alignedflow-config-${date}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
-export function validateAndParseConfig(jsonString) {
-  try {
-    const c = JSON.parse(jsonString);
-    if (!c || typeof c !== "object") return { ok: false, error: "Not a valid JSON object" };
-    if (c.version !== 1) return { ok: false, error: "Unsupported config version" };
-    if (!c.evening || !c.pomodoro) return { ok: false, error: "Missing evening or pomodoro section" };
-    if (!Array.isArray(c.evening.sections)) return { ok: false, error: "Missing evening sections" };
-    if (!Array.isArray(c.evening.exercises)) return { ok: false, error: "Missing evening exercises" };
-    for (const ex of c.evening.exercises) {
-      if (!ex.id || !ex.section || !ex.title || !ex.duration || !Array.isArray(ex.steps))
-        return { ok: false, error: `Invalid evening exercise: ${ex.title || ex.id || "unknown"}` };
+const slug = (s) => (s || "preset").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "preset";
+const today = () => new Date().toISOString().slice(0, 10);
+
+// One preset, one file. The `kind` tag is what lets the importer refuse an
+// evening preset offered to the work builder instead of half-loading it.
+export function exportPreset(kind, preset) {
+  download({
+    app: "alignedflow",
+    kind: `${kind}-preset`,
+    version: PRESETS_VERSION,
+    exportedAt: new Date().toISOString(),
+    preset,
+  }, `alignedflow-${kind}-${slug(preset.name)}-${today()}.json`);
+}
+
+// Everything, both modes — the backup, kept separate from the per-preset
+// export above so the two are never confused for each other.
+export function exportBackup(stores) {
+  download({
+    app: "alignedflow",
+    kind: "backup",
+    version: PRESETS_VERSION,
+    exportedAt: new Date().toISOString(),
+    work: stores.work,
+    evening: stores.evening,
+  }, `alignedflow-backup-${today()}.json`);
+}
+
+export function presetToJSON(preset) {
+  return JSON.stringify({ app: "alignedflow", kind: "preset", version: PRESETS_VERSION, preset }, null, 2);
+}
+
+// ── Import ──
+
+// Shape checks are deliberately shallow — enough to tell a work preset from an
+// evening one and to catch a truncated paste, with migrate* above filling in
+// anything merely absent. The message matters more than the strictness: these
+// files are usually AI-written, and "unknown field" is not a debuggable error.
+function validateBody(kind, b) {
+  if (!b || typeof b !== "object") return "Not a JSON object";
+  if (kind === "work") {
+    if (!b.durations && !b.phases) return "Doesn't look like a work preset — no durations or phases";
+    if (b.workItems && !Array.isArray(b.workItems)) return "workItems must be a list";
+    for (const key of ["microBreakExercises", "shortBreakExercises", "longBreakExercises"]) {
+      if (b[key] && !Array.isArray(b[key])) return `${key} must be a list`;
     }
-    if (!Array.isArray(c.pomodoro.workItems)) return { ok: false, error: "Missing pomodoro work items" };
-    if (!Array.isArray(c.pomodoro.shortBreakExercises)) return { ok: false, error: "Missing short break exercises" };
-    if (!Array.isArray(c.pomodoro.longBreakExercises)) return { ok: false, error: "Missing long break exercises" };
-    migratePomodoro(c.pomodoro);
-    return { ok: true, config: c };
-  } catch (e) {
-    return { ok: false, error: "Invalid JSON" };
+  } else {
+    if (!Array.isArray(b.exercises)) return "Doesn't look like an evening preset — no exercises list";
+    if (!b.exercises.length) return "No exercises in this preset";
+    for (const ex of b.exercises) {
+      const where = ex && (ex.title || ex.id) ? `"${ex.title || ex.id}"` : "an exercise";
+      if (!ex || typeof ex !== "object") return "An exercise is not an object";
+      if (!ex.title) return `${where} has no title`;
+      if (!ex.section) return `${where} has no section`;
+      if (typeof ex.duration !== "number" || ex.duration <= 0) return `${where} has no valid duration (seconds)`;
+      if (!Array.isArray(ex.steps)) return `${where} has no steps list`;
+    }
   }
+  return null;
+}
+
+// Evening cards are keyed by exercise id, and a preset written by hand or by
+// an AI often repeats or omits them. Renumbering on import is safer than
+// trusting them — nothing outside the preset references these.
+function renumberEvening(body) {
+  body.exercises = body.exercises.map((ex, i) => ({ ...ex, id: i + 1 }));
+  return body;
+}
+
+// Sections named by an exercise but never declared would render with the
+// fallback colour and be invisible in the builder's section list, so they get
+// declared on the way in.
+function reconcileSections(body) {
+  const declared = new Set(body.sections.map(s => s.name));
+  const palette = DEFAULT_CONFIG.evening.sections;
+  let next = palette.length;
+  for (const ex of body.exercises) {
+    if (declared.has(ex.section)) continue;
+    declared.add(ex.section);
+    body.sections.push({ name: ex.section, color: (palette[next++ % palette.length] || palette[0]).color });
+  }
+  return body;
+}
+
+function toPreset(kind, body, name) {
+  const migrated = MIGRATE[kind](structuredClone(body));
+  if (kind === "evening") reconcileSections(renumberEvening(migrated));
+  const { id, name: bodyName, ...rest } = migrated;
+  return { id: makePresetId(), name: name || bodyName || "Imported", ...rest };
+}
+
+// Accepts, in order of specificity:
+//   · a v2 preset file for this mode        → one preset
+//   · a v2 backup                           → this mode's presets, appended
+//   · a v1 whole-app config                 → this mode's half, as one preset
+//   · a bare preset body with no wrapper    → one preset (what an AI tends to
+//     emit when asked for "the JSON" without being handed the envelope)
+// Never overwrites: everything lands as an addition to the existing list.
+export function parseImport(kind, text) {
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, error: "Invalid JSON — check for a missing brace or a trailing comma" };
+  }
+  if (!raw || typeof raw !== "object") return { ok: false, error: "Not a JSON object" };
+
+  const other = kind === "work" ? "evening" : "work";
+
+  // Explicitly tagged as the other mode — the whole point of the kind tag.
+  if (raw.kind === `${other}-preset`) {
+    return { ok: false, error: `That's an ${KIND_LABELS[other]} preset. Import it from the ${KIND_LABELS[other]} builder.` };
+  }
+
+  // A backup carries both modes; take only this one's.
+  if (raw.kind === "backup" || (raw.work && raw.evening && Array.isArray(raw.work.presets))) {
+    const store = raw[kind];
+    if (!store || !Array.isArray(store.presets) || !store.presets.length) {
+      return { ok: false, error: `This backup has no ${KIND_LABELS[kind]} presets` };
+    }
+    const presets = [];
+    for (const p of store.presets) {
+      const err = validateBody(kind, p);
+      if (err) return { ok: false, error: `Preset "${p.name || "?"}": ${err}` };
+      presets.push(toPreset(kind, p, p.name));
+    }
+    return { ok: true, presets };
+  }
+
+  // v1 whole-app config — the format the old EXPORT button wrote. Still read
+  // so a backup taken before presets existed stays restorable.
+  if (raw.version === 1 && raw.pomodoro && raw.evening) {
+    const body = kind === "work" ? raw.pomodoro : raw.evening;
+    const err = validateBody(kind, body);
+    if (err) return { ok: false, error: err };
+    return { ok: true, presets: [toPreset(kind, body, "Imported")] };
+  }
+
+  // A tagged single preset, or a bare body.
+  const body = raw.preset && typeof raw.preset === "object" ? raw.preset : raw;
+  const err = validateBody(kind, body);
+  if (err) return { ok: false, error: err };
+  return { ok: true, presets: [toPreset(kind, body, body.name)] };
+}
+
+// Handed to an AI so it writes against the real shape instead of a guess. Built
+// from the live defaults rather than a hardcoded string, so it cannot drift out
+// of step with what the importer actually accepts.
+export function presetSchemaText(kind) {
+  const d = defaultPresetBody(kind);
+  const note = kind === "work"
+    ? `// AlignedFlow work preset. Paste a filled-in version of this into IMPORT.
+// durations are MINUTES. loopsUntilShort only applies when microEnabled is true.
+// setsUntilLong counts sets per long break; with micro off a set is one focus block.`
+    : `// AlignedFlow evening preset. Paste a filled-in version of this into IMPORT.
+// duration is SECONDS, and for a bilateral exercise it covers BOTH sides.
+// Every exercise's "section" should match one of the section names above it.
+// Exercise ids are renumbered on import, so they need not be right.`;
+  const example = kind === "work"
+    ? { name: "Busy day", phases: d.phases, durations: d.durations, microEnabled: d.microEnabled,
+        loopsUntilShort: d.loopsUntilShort, setsUntilLong: d.setsUntilLong,
+        taskTimerEnabled: d.taskTimerEnabled, taskDuration: d.taskDuration, taskShowNumbers: d.taskShowNumbers,
+        workSummary: d.workSummary, workHeading: d.workHeading, workItems: d.workItems.slice(0, 2),
+        microBreakSummary: d.microBreakSummary, microBreakHeading: d.microBreakHeading, microBreakExercises: d.microBreakExercises.slice(0, 1),
+        shortBreakSummary: d.shortBreakSummary, shortBreakHeading: d.shortBreakHeading, shortBreakExercises: d.shortBreakExercises.slice(0, 1),
+        longBreakSummary: d.longBreakSummary, longBreakHeading: d.longBreakHeading, longBreakExercises: d.longBreakExercises.slice(0, 1) }
+    : { name: "Short evening", sections: d.sections, switchBuffer: d.switchBuffer, transitionTime: d.transitionTime,
+        exercises: d.exercises.slice(0, 2) };
+  return `${note}\n\n${JSON.stringify(example, null, 2)}`;
 }
 
 // ── Utilities ──

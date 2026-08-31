@@ -667,7 +667,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
+export default function AlignedFlow({ config, patchPreset, onTaskStatus }) {
   // Restore where the diamonds left off — which phase and how far into the
   // long-break cycle — so closing/refreshing the app doesn't lose your place.
   // The countdown itself is not restored (see timeLeft below): the phase
@@ -729,9 +729,11 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
   const blocksPerSet = microEnabled ? loopsUntilShort : 1;
   const blocksUntilLong = blocksPerSet * setsUntilLong;
 
-  // Persist settings changes back to config
+  // Persist settings changes back into the preset they belong to, so a change
+  // made in the drawer sticks to this routine rather than to whichever one is
+  // switched to next.
   useEffect(() => {
-    setConfig(prev => ({ ...prev, pomodoro: { ...prev.pomodoro, durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskTimerEnabled: taskEnabled, taskDuration, taskShowNumbers } }));
+    patchPreset({ durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskTimerEnabled: taskEnabled, taskDuration, taskShowNumbers });
   }, [durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskEnabled, taskDuration, taskShowNumbers]);
 
   // Persist the diamonds' cycle position so it survives a close/reopen or
