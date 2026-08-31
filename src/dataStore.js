@@ -367,6 +367,44 @@ export function saveSession(session) {
   }
 }
 
+// ── Countdown restore ──
+//
+// Where the phase timer and the task budget had got to, so a browser crash —
+// or just a closed tab — comes back mid-block instead of at the top of it.
+//
+// Deliberately its own key rather than more fields on the session above: that
+// one syncs between devices, and a countdown belongs to the machine that was
+// running it. Nothing here ever reaches the cloud.
+//
+// Wall-clock time that passed while the app was gone is not deducted. The app
+// was not running, so the block did not advance — and subtracting eighteen
+// hours because it was reopened the next morning would be worse than useless.
+// A save older than the window below is simply ignored, and the phase comes
+// back at its full duration as it always did.
+const TIMER_KEY = "alignedflow-timer";
+export const TIMER_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+export function loadTimer() {
+  try {
+    const raw = localStorage.getItem(TIMER_KEY);
+    if (!raw) return null;
+    const t = JSON.parse(raw);
+    if (!t || typeof t.timeLeft !== "number" || typeof t.savedAt !== "number") return null;
+    if (Date.now() - t.savedAt > TIMER_MAX_AGE_MS) return null;
+    return t;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function saveTimer(t) {
+  try {
+    localStorage.setItem(TIMER_KEY, JSON.stringify({ ...t, savedAt: Date.now() }));
+  } catch (e) {
+    // localStorage full or unavailable — silent fail
+  }
+}
+
 // Switching work preset changes the cycle length underneath the diamonds, so
 // the stored block count would point at a block that no longer exists — the
 // same reason toggling micro breaks resets it. Cleared on switch.
