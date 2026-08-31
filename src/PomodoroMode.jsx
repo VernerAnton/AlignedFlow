@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { playStartSound, playStopSound, playMicroBreakSound, playShortBreakSound, playLongBreakSound, playDoneSound } from "./sounds";
 import { sendNotification } from "./notifications";
-import { computePhaseDim, loadSession, saveSession } from "./dataStore";
+import { computePhaseDim, loadSession, saveSession, loadTimer, saveTimer } from "./dataStore";
 
 // Exported so App can size the mode-switcher pill against the same breakpoint.
 export function useWindowWidth() {
@@ -670,13 +670,32 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
 export default function AlignedFlow({ config, patchPreset, onTaskStatus, onRuntime, remoteSession }) {
   // Restore where the diamonds left off — which phase and how far into the
   // long-break cycle — so closing/refreshing the app doesn't lose your place.
-  // The countdown itself is not restored (see timeLeft below): the phase
-  // timer always comes back paused at its full duration.
   const restoredSession = useMemo(() => loadSession(), []);
   const [phaseId, setPhaseId] = useState(() => restoredSession?.phaseId || "work");
   const [durations, setDurations] = useState(() => config.durations || { work: 25, micro: 2, short: 5, long: 15 });
+  // Always paused on open, whatever was restored. A countdown that resumes on
+  // its own would run unwatched after a crash.
   const [isPlaying, setIsPlaying] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(() => (config.durations?.[restoredSession?.phaseId || "work"] || 25) * 60);
+
+  // The countdown is restored too, so a browser crash mid-block doesn't cost
+  // the block. Three things have to line up for a saved remainder to mean
+  // anything, on top of the age check in loadTimer:
+  //   · the same preset — 20 minutes left is nonsense against 8-minute blocks
+  //   · the same phase — a remainder only counts against the phase it ran in
+  //   · within the phase's current length, since that preset's durations may
+  //     have been edited on another device in the meantime
+  const restoredTimer = useMemo(() => {
+    const t = loadTimer();
+    if (!t) return null;
+    const phase = restoredSession?.phaseId || "work";
+    if (t.presetId !== config.id || t.phaseId !== phase) return null;
+    const full = (config.durations?.[phase] || 25) * 60;
+    return { ...t, timeLeft: Math.min(Math.max(0, t.timeLeft), full) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [timeLeft, setTimeLeft] = useState(() =>
+    restoredTimer ? restoredTimer.timeLeft : (config.durations?.[restoredSession?.phaseId || "work"] || 25) * 60);
   // Focus blocks completed within the current long-break cycle (resets at each long break)
   const [workCount, setWorkCount] = useState(() => restoredSession?.workCount ?? 0);
   const [microEnabled, setMicroEnabled] = useState(() => config.microEnabled ?? false);
@@ -684,13 +703,15 @@ export default function AlignedFlow({ config, patchPreset, onTaskStatus, onRunti
   const [setsUntilLong, setSetsUntilLong] = useState(() => config.setsUntilLong ?? 4);
   const [muted, setMuted] = useState(() => config.muted ?? false);
   // Task timer — a focus-time budget that spans the loops. taskElapsed counts
-  // only work-phase seconds; it is intentionally not persisted, matching the
-  // rest of the runtime timer state, so a reload starts the task fresh.
+  // only work-phase seconds, and is restored alongside the phase countdown so
+  // a crash costs neither.
   const [taskEnabled, setTaskEnabled] = useState(() => config.taskTimerEnabled ?? false);
   const [taskDuration, setTaskDuration] = useState(() => config.taskDuration ?? 50);
   const [taskShowNumbers, setTaskShowNumbers] = useState(() => config.taskShowNumbers ?? true);
-  const [taskElapsed, setTaskElapsed] = useState(0);
-  const [taskDone, setTaskDone] = useState(false);
+  const [taskElapsed, setTaskElapsed] = useState(() => restoredTimer?.taskElapsed ?? 0);
+  // Restored as well, so a budget already spent doesn't announce itself again
+  // the moment the restored block is started.
+  const [taskDone, setTaskDone] = useState(() => restoredTimer?.taskDone ?? false);
   const taskEnabledRef = useRef(config.taskTimerEnabled ?? false);
   const mutedRef = useRef(config.muted ?? false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
@@ -733,23 +754,35 @@ export default function AlignedFlow({ config, patchPreset, onTaskStatus, onRunti
   // made in the drawer sticks to this routine rather than to whichever one is
   // switched to next.
   //
-  // Skipped on mount: the values being written are the ones just read from the
-  // preset, so locally it was a no-op — but with sync on it becomes a network
-  // write every time the app opens, and one that can put this device's
-  // mounted-at values over a change another device made in the meantime.
-  const settingsMounted = useRef(false);
+  // Not written on mount: the values are the ones just read from the preset, so
+  // locally it was a no-op — but with sync on it becomes a network write every
+  // time the app opens, and one that can put this device's mounted-at values
+  // over a change another device made in the meantime. Compared by value rather
+  // than counting runs, since StrictMode invokes effects twice in development
+  // and a first-run flag would let the second pass through.
+  const lastSettingsRef = useRef(null);
   useEffect(() => {
-    if (!settingsMounted.current) { settingsMounted.current = true; return; }
-    patchPreset({ durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskTimerEnabled: taskEnabled, taskDuration, taskShowNumbers });
+    const settings = { durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskTimerEnabled: taskEnabled, taskDuration, taskShowNumbers };
+    const json = JSON.stringify(settings);
+    if (lastSettingsRef.current === json) return;
+    const first = lastSettingsRef.current === null;
+    lastSettingsRef.current = json;
+    if (first) return;
+    patchPreset(settings);
   }, [durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskEnabled, taskDuration, taskShowNumbers]);
 
   // Persist the diamonds' cycle position so it survives a close/reopen or
-  // hard refresh. The countdown itself (timeLeft, isPlaying) is intentionally
-  // left out — it always comes back paused at the restored phase's full
-  // duration rather than trying to reconstruct elapsed time.
+  // hard refresh. This is the half that syncs between devices.
   useEffect(() => {
     saveSession({ phaseId, workCount });
   }, [phaseId, workCount]);
+
+  // The countdown, saved on every tick — a crash can happen at any moment, so
+  // there is no cadence to batch to. One small write a second while running,
+  // and none while paused. Stays on this device; see saveTimer.
+  useEffect(() => {
+    saveTimer({ presetId: config.id, phaseId, timeLeft, taskElapsed, taskDone });
+  }, [config.id, phaseId, timeLeft, taskElapsed, taskDone]);
 
   // Handed to App for sync: the cycle position is shared between devices, and
   // isPlaying is what tells App whether a remote change can be applied now or
@@ -782,10 +815,21 @@ export default function AlignedFlow({ config, patchPreset, onTaskStatus, onRunti
   useEffect(() => { workCountRef.current = workCount; }, [workCount]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
-  // Reset timeLeft when duration for the current phase changes (slider is disabled while playing)
+  // Reset timeLeft when the duration for the current phase changes (the slider
+  // is disabled while playing).
+  //
+  // Gated on the value actually having changed, not on a first-run flag: this
+  // effect must not fire on mount, where it would overwrite a countdown
+  // restored from a crash with the phase's full duration. A run-count guard is
+  // not enough — StrictMode invokes effects twice in development, and the
+  // second pass would sail through it.
+  const lastPhaseDurationRef = useRef(durations[phaseId]);
   useEffect(() => {
+    const secs = durations[phaseId];
+    if (secs === lastPhaseDurationRef.current) return;
+    lastPhaseDurationRef.current = secs;
     if (!isPlaying) {
-      setTimeLeft(durations[phaseId] * 60);
+      setTimeLeft(secs * 60);
     }
   }, [durations[phaseId]]);
 

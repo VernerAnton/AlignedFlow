@@ -222,9 +222,14 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
   // reason work mode skips its own: with sync on, writing back what was just
   // read is a network write per app open, and can land stale over a change
   // made elsewhere.
-  const mutedMounted = useRef(false);
+  // Compared by value rather than counting runs — StrictMode invokes effects
+  // twice in development, so a first-run flag would let the second pass write.
+  const lastMutedRef = useRef(null);
   useEffect(() => {
-    if (!mutedMounted.current) { mutedMounted.current = true; return; }
+    if (lastMutedRef.current === muted) return;
+    const first = lastMutedRef.current === null;
+    lastMutedRef.current = muted;
+    if (first) return;
     patchPreset({ muted });
   }, [muted]);
 
