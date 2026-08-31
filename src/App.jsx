@@ -4,6 +4,8 @@ import EveningMode from './EveningMode'
 import EveningBuilder from './EveningBuilder'
 import PomodoroBuilder from './PomodoroBuilder'
 import { loadPresets, savePresets, getActivePreset, selectPreset, patchPreset, clearSession } from './dataStore'
+import UpdatePrompt from './UpdatePrompt'
+import { useAppUpdate } from './useAppUpdate'
 import { unlockAudio } from './sounds'
 import { requestNotificationPermission } from './notifications'
 
@@ -46,6 +48,7 @@ export default function App() {
   const btnRefs = useRef({})
   const width = useWindowWidth()
   const initRef = useRef(false)
+  const update = useAppUpdate()
 
   useEffect(() => () => {
     clearTimeout(tapTimer.current); clearTimeout(openTimer.current); clearTimeout(closeTimer.current)
@@ -367,6 +370,12 @@ export default function App() {
           />
         )}
         </div>
+      )}
+
+      {/* Offered, never taken: a reload nobody asked for would discard a
+          running session and whatever is half-typed into the builder. */}
+      {update.needRefresh && (
+        <UpdatePrompt onReload={update.updateApp} onDismiss={update.dismiss} shift={isBuilder ? 0 : pillShift} />
       )}
     </div>
   )
