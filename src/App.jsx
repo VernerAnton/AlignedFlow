@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import PomodoroMode, { useWindowWidth } from './PomodoroMode'
 import EveningMode from './EveningMode'
 import EveningBuilder from './EveningBuilder'
 import PomodoroBuilder from './PomodoroBuilder'
 import { loadPresets, savePresets, getActivePreset, selectPreset, patchPreset, clearSession } from './dataStore'
 import UpdatePrompt from './UpdatePrompt'
+import { useSync } from './useSync'
 import { useAppUpdate } from './useAppUpdate'
 import { unlockAudio } from './sounds'
 import { requestNotificationPermission } from './notifications'
@@ -49,6 +50,28 @@ export default function App() {
   const width = useWindowWidth()
   const initRef = useRef(false)
   const update = useAppUpdate()
+
+  // What each mode is doing right now — whether a timer is running, and where
+  // work is in its cycle. Sync reads both: the cycle position is shared across
+  // devices, and isPlaying decides whether an incoming change can be applied
+  // now or has to wait for the block to finish.
+  const [runtime, setRuntime] = useState({ work: null, evening: null })
+  const onWorkRuntime    = useCallback((v) => setRuntime(r => (r.work && r.work.isPlaying === v.isPlaying && r.work.session.phaseId === v.session.phaseId && r.work.session.workCount === v.session.workCount) ? r : { ...r, work: v }), [])
+  const onEveningRuntime = useCallback((v) => setRuntime(r => (r.evening && r.evening.isPlaying === v.isPlaying) ? r : { ...r, evening: v }), [])
+  // A cycle position from another device, handed to work mode to adopt.
+  const [remoteSession, setRemoteSession] = useState(null)
+  // Bumped when sync replaces the active preset's contents. Both modes copy
+  // their preset into once-only state, so they are keyed on this as well as on
+  // the preset id — otherwise a change made on another device would sit
+  // unapplied until the next switch.
+  const [rev, setRev] = useState({ work: 0, evening: 0 })
+  const onRemoteApplied = useCallback((kind) => setRev(r => ({ ...r, [kind]: r[kind] + 1 })), [])
+
+  const sync = useSync({
+    work, evening, setWork, setEvening, runtime,
+    applyRemoteSession: setRemoteSession,
+    onRemoteApplied,
+  })
 
   useEffect(() => () => {
     clearTimeout(tapTimer.current); clearTimeout(openTimer.current); clearTimeout(closeTimer.current)
@@ -187,8 +210,8 @@ export default function App() {
   // state initialisers, so without this they would keep running the old
   // preset's numbers and then write them back over the new one.
   const renderMode = (id) => id === 'work'
-    ? <PomodoroMode key={activeWork.id} config={activeWork} patchPreset={patchActive('work')} onTaskStatus={setTaskStatus} />
-    : <EveningMode key={activeEvening.id} config={activeEvening} patchPreset={patchActive('evening')} />
+    ? <PomodoroMode key={`${activeWork.id}:${rev.work}`} config={activeWork} patchPreset={patchActive('work')} onTaskStatus={setTaskStatus} onRuntime={onWorkRuntime} remoteSession={remoteSession} />
+    : <EveningMode key={`${activeEvening.id}:${rev.evening}`} config={activeEvening} patchPreset={patchActive('evening')} onRuntime={onEveningRuntime} />
 
   return (
     <div onClick={handleFirstInteraction} style={{ position: 'relative', height: '100vh', overflow: 'hidden', background: '#0f0e0c' }}>
@@ -219,8 +242,8 @@ export default function App() {
       >
         {mode === 'work' && renderMode('work')}
         {mode === 'evening' && renderMode('evening')}
-        {mode === 'builder-work' && <PomodoroBuilder key={work.activeId} store={work} setStore={setWork} onBack={() => switchMode('work')} />}
-        {mode === 'builder-evening' && <EveningBuilder key={evening.activeId} store={evening} setStore={setEvening} onBack={() => switchMode('evening')} />}
+        {mode === 'builder-work' && <PomodoroBuilder key={work.activeId} store={work} setStore={setWork} sync={sync} onBack={() => switchMode('work')} />}
+        {mode === 'builder-evening' && <EveningBuilder key={evening.activeId} store={evening} setStore={setEvening} sync={sync} onBack={() => switchMode('evening')} />}
       </div>
 
       {/* Floating mode switcher pill — fixed, above both modes (hidden in

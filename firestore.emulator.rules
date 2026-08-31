@@ -1,0 +1,18 @@
+rules_version = '2';
+// EMULATOR ONLY — never deploy these.
+//
+// Named off the default `firestore.rules` on purpose: a stray
+// `firebase deploy --only firestore:rules` would otherwise publish
+// allow-everything over the real database. Under this name it has nothing to
+// deploy and fails instead.
+//
+// The emulator holds no real data, so there is nothing here worth key-gating.
+// The production rule — the one that checks the sync key — lives in
+// docs/firebase-setup.md and is pasted into the Firebase console by hand.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
