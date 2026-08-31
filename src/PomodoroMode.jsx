@@ -667,7 +667,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export default function AlignedFlow({ config, patchPreset, onTaskStatus }) {
+export default function AlignedFlow({ config, patchPreset, onTaskStatus, onRuntime, remoteSession }) {
   // Restore where the diamonds left off — which phase and how far into the
   // long-break cycle — so closing/refreshing the app doesn't lose your place.
   // The countdown itself is not restored (see timeLeft below): the phase
@@ -732,7 +732,14 @@ export default function AlignedFlow({ config, patchPreset, onTaskStatus }) {
   // Persist settings changes back into the preset they belong to, so a change
   // made in the drawer sticks to this routine rather than to whichever one is
   // switched to next.
+  //
+  // Skipped on mount: the values being written are the ones just read from the
+  // preset, so locally it was a no-op — but with sync on it becomes a network
+  // write every time the app opens, and one that can put this device's
+  // mounted-at values over a change another device made in the meantime.
+  const settingsMounted = useRef(false);
   useEffect(() => {
+    if (!settingsMounted.current) { settingsMounted.current = true; return; }
     patchPreset({ durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskTimerEnabled: taskEnabled, taskDuration, taskShowNumbers });
   }, [durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskEnabled, taskDuration, taskShowNumbers]);
 
@@ -743,6 +750,13 @@ export default function AlignedFlow({ config, patchPreset, onTaskStatus }) {
   useEffect(() => {
     saveSession({ phaseId, workCount });
   }, [phaseId, workCount]);
+
+  // Handed to App for sync: the cycle position is shared between devices, and
+  // isPlaying is what tells App whether a remote change can be applied now or
+  // has to wait for this block to end.
+  useEffect(() => {
+    onRuntime?.({ isPlaying, session: { phaseId, workCount } });
+  }, [isPlaying, phaseId, workCount, onRuntime]);
 
   const PHASES = useMemo(() => {
     const p = config.phases || { work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" }, micro: { color: "#e8899e", tag: "MICRO", label: "Micro Break" }, short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" }, long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" } };
@@ -1001,6 +1015,21 @@ export default function AlignedFlow({ config, patchPreset, onTaskStatus }) {
     segmentFromRef.current = smoothFillPct;
     segmentToRef.current = 100;
   };
+
+  // A cycle position reached on another device. App only hands one down while
+  // this device is idle, so adopting it is safe: the app lands paused at the
+  // start of the phase the other machine left off in. That is the whole point
+  // of sharing it — four focus blocks spread across a laptop and a desktop
+  // still add up to one long break, instead of each device counting its own.
+  const adoptedRef = useRef(null);
+  useEffect(() => {
+    if (!remoteSession || isPlayingRef.current) return;
+    const json = JSON.stringify(remoteSession);
+    if (json === adoptedRef.current) return;
+    adoptedRef.current = json;
+    if (remoteSession.phaseId === phaseIdRef.current && remoteSession.workCount === workCountRef.current) return;
+    handlePhaseChange(remoteSession.phaseId, remoteSession.workCount);
+  }, [remoteSession]);
 
   const onPlayPause = () => {
     setIsPlaying((p) => {

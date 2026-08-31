@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { computeSectionColors, getActivePreset, patchPreset, nextId, DEFAULT_CONFIG } from "./dataStore";
 import PresetBar from "./PresetBar";
 import VersionStamp from "./VersionStamp";
+import SyncPanel from "./SyncPanel";
 
 const FONT = "'DM Mono', monospace";
 const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#f0ece4", fontFamily: FONT, fontSize: "0.78rem", padding: "0.4rem 0.6rem", width: "100%", outline: "none" };
 const btnSmall = { border: "1px solid rgba(255,255,255,0.15)", background: "transparent", borderRadius: 6, color: "rgba(255,255,255,0.5)", fontFamily: FONT, fontSize: "0.6rem", letterSpacing: "0.08em", cursor: "pointer", padding: "0.3rem 0.55rem" };
 const btnDanger = { ...btnSmall, borderColor: "rgba(200,80,80,0.4)", color: "#c85050" };
 
-export default function EveningBuilder({ store, setStore, onBack }) {
+export default function EveningBuilder({ store, setStore, sync, onBack }) {
   const active = getActivePreset(store);
   const [evening, setEvening] = useState(active);
   const [expandedCard, setExpandedCard] = useState(null);
@@ -293,6 +294,7 @@ export default function EveningBuilder({ store, setStore, onBack }) {
 
         <button onClick={addExercise} style={{ ...btnSmall, width: "100%", marginTop: "0.6rem", padding: "0.55rem 0", textAlign: "center" }}>+ ADD EXERCISE</button>
 
+        {sync && <SyncPanel sync={sync} />}
         <VersionStamp />
         <div style={{ height: 80 }} />{/* bottom spacer */}
       </div>

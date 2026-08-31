@@ -4,4 +4,4 @@
 //
 // Counts builds shipped since this counter was added, not the app's age, so
 // it is not the semver in package.json and never will be.
-export const APP_VERSION = 1;
+export const APP_VERSION = 2;

@@ -184,7 +184,7 @@ function ExerciseCard({ ex, color, sideLabel, totalCount }) {
 
 // ── Root ────────────────────────────────────────────────────────────────────
 
-export default function EveningRoutine({ config, patchPreset }) {
+export default function EveningRoutine({ config, patchPreset, onRuntime }) {
   const exercises = config.exercises;
   const switchBuffer = config.switchBuffer;
 
@@ -218,10 +218,21 @@ export default function EveningRoutine({ config, patchPreset }) {
   const mutedRef = useRef(config.muted ?? false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
 
-  // Persist muted setting into this preset
+  // Persist muted setting into this preset. Skipped on mount for the same
+  // reason work mode skips its own: with sync on, writing back what was just
+  // read is a network write per app open, and can land stale over a change
+  // made elsewhere.
+  const mutedMounted = useRef(false);
   useEffect(() => {
+    if (!mutedMounted.current) { mutedMounted.current = true; return; }
     patchPreset({ muted });
   }, [muted]);
+
+  // Tells App whether a routine is under way here, so a preset edit arriving
+  // from another device waits rather than restarting the run in progress.
+  useEffect(() => {
+    onRuntime?.({ isPlaying });
+  }, [isPlaying, onRuntime]);
 
   // Bilateral sub-phase — derived from timeLeft for bilateral exercises
   // "side1" | "switching" | "side2" | null (for non-bilateral)

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { getActivePreset, patchPreset, DEFAULT_CONFIG } from "./dataStore";
 import PresetBar from "./PresetBar";
 import VersionStamp from "./VersionStamp";
+import SyncPanel from "./SyncPanel";
 
 const FONT = "'DM Mono', monospace";
 const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#f0ece4", fontFamily: FONT, fontSize: "0.78rem", padding: "0.4rem 0.6rem", width: "100%", outline: "none" };
@@ -12,7 +13,7 @@ const labelStyle = { display: "block", fontSize: "0.55rem", letterSpacing: "0.1e
 const PHASE_IDS = ["work", "micro", "short", "long"];
 const PHASE_LABELS = { work: "Work", micro: "Micro Break", short: "Short Break", long: "Long Break" };
 
-export default function PomodoroBuilder({ store, setStore, onBack }) {
+export default function PomodoroBuilder({ store, setStore, sync, onBack }) {
   const active = getActivePreset(store);
   const [pomo, setPomo] = useState(() => ({
     ...active,
@@ -214,6 +215,7 @@ export default function PomodoroBuilder({ store, setStore, onBack }) {
               onChange={exercises => setPomo(prev => ({ ...prev, longBreakExercises: exercises }))} hasSubtitle hasNote />
           </>
         )}
+        {sync && <SyncPanel sync={sync} />}
         <VersionStamp />
         <div style={{ height: 80 }} />
       </div>

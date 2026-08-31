@@ -15,6 +15,17 @@ const commit = (() => {
 })()
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        // Firebase in a chunk of its own, named rather than hash-only so the
+        // service worker rules below can single it out reliably.
+        manualChunks(id) {
+          if (id.includes('node_modules/firebase') || id.includes('node_modules/@firebase')) return 'firebase'
+        },
+      },
+    },
+  },
   define: {
     __BUILD_COMMIT__: JSON.stringify(commit),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
@@ -23,6 +34,21 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // Sync is opt-in, so the Firebase chunk must not be precached — that
+        // would push ~160 KB gzipped onto every device at install time,
+        // including the ones that never turn sync on. Left out of the
+        // precache and cached on first use instead, which still leaves it
+        // available offline once a device has connected once (Firestore's own
+        // offline replay depends on the chunk being reachable with no
+        // network).
+        globIgnores: ['**/firebase-*.js', '**/engine-*.js'],
+        runtimeCaching: [{
+          urlPattern: /\/assets\/(firebase|engine)-[^/]+\.js$/,
+          handler: 'CacheFirst',
+          options: { cacheName: 'alignedflow-sync', expiration: { maxEntries: 8 } },
+        }],
+      },
       // We register the worker ourselves, in src/useAppUpdate.js. Left on
       // 'auto' the plugin injects its own registration, which under
       // 'autoUpdate' reloads the page the moment a new build activates —
