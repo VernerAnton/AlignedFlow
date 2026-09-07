@@ -15,12 +15,17 @@ export function useWindowWidth() {
   return w;
 }
 
-// Long-press detector (~400ms hold) — opens the cycle editor without
-// colliding with the ordinary tap-to-toggle on the same handle, and without
-// relying on double-click/double-tap: no precedent for that gesture
-// elsewhere in this app, and it's riskier on a mobile PWA where it can
-// collide with the browser's native zoom/selection gestures.
-function useLongPress(onLongPress, ms = 400) {
+// Long-press detector — opens the cycle editor without relying on
+// double-click/double-tap: no precedent for that gesture elsewhere in this
+// app, and it's riskier on a mobile PWA where it can collide with the
+// browser's native zoom/selection gestures.
+//
+// The hold is deliberately long. Movement cancels it, so a *still* pointer is
+// exactly what lets it fire — and a deliberate mouse click on a small target
+// routinely holds the button for 400-500ms without moving. At that threshold
+// an ordinary click on the drawer handle would trip the hold, swallow its own
+// click and pop the editor open on its own; 700ms sits clear of that.
+function useLongPress(onLongPress, ms = 700) {
   const timerRef = useRef(null);
   const firedRef = useRef(false);
   const startRef = useRef({ x: 0, y: 0 });
@@ -414,16 +419,23 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
   const railW = drawerMobile ? 44 : 52;
   const cycleLongPress = useLongPress(() => setCycleEditorOpen(true));
 
+  // Only the transient editor bar dismisses itself on an outside press. The
+  // drawer stays put until the chevron closes it — it's a panel you work in,
+  // and the whole background behind it is a play/pause tap target, so
+  // closing on any stray press outside made it vanish mid-adjustment.
+  // Presses inside the drawer are exempt too: the handle's own click already
+  // closes the editor, and dismissing it here first would let that click fall
+  // through and toggle the drawer instead.
   useEffect(() => {
-    if (!open && !cycleEditorOpen) return;
+    if (!cycleEditorOpen) return;
     const handler = (e) => {
       const inDrawer = drawerRef.current && drawerRef.current.contains(e.target);
       const inEditor = editorRef.current && editorRef.current.contains(e.target);
-      if (!inDrawer && !inEditor) { setOpen(false); setCycleEditorOpen(false); }
+      if (!inDrawer && !inEditor) setCycleEditorOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open, cycleEditorOpen]);
+  }, [cycleEditorOpen]);
 
   const btnBase = { border: "1px solid rgba(255,255,255,0.18)", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" };
 
@@ -443,20 +455,15 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
         transition: "transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
         overflow: "hidden",
       }}>
-        {/* Chevron handle — a quick tap toggles the drawer; a long-press (or
-            a tap while the cycle editor is already open) opens/closes the
-            bigger tap-to-jump cycle editor instead. */}
+        {/* Chevron handle — a tap anywhere along it toggles the drawer, or
+            closes the cycle editor if that's open. The hold-to-open-the-editor
+            gesture lives on the diamonds alone (below), so the chevron itself
+            is only ever an open/close control. */}
         <div
           onClick={() => {
-            if (cycleLongPress.didFire()) return; // the hold already handled this gesture
             if (cycleEditorOpen) { setCycleEditorOpen(false); return; }
             setOpen(!open);
           }}
-          onPointerDown={cycleLongPress.onPointerDown}
-          onPointerMove={cycleLongPress.onPointerMove}
-          onPointerUp={cycleLongPress.onPointerUp}
-          onPointerLeave={cycleLongPress.onPointerLeave}
-          onPointerCancel={cycleLongPress.onPointerCancel}
           style={{
             height: 32,
             display: "flex",
@@ -466,10 +473,22 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             pointerEvents: "auto",
             gap: 12,
             padding: "0 0.9rem",
-            touchAction: "none",
           }}
         >
-          <CycleIndicator blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} />
+          {/* Holding the diamonds opens the cycle editor. When that fires, the
+              press's own click is stopped here so it doesn't also reach the
+              handle's toggle above. */}
+          <div
+            onClick={(e) => { if (cycleLongPress.didFire()) e.stopPropagation(); }}
+            onPointerDown={cycleLongPress.onPointerDown}
+            onPointerMove={cycleLongPress.onPointerMove}
+            onPointerUp={cycleLongPress.onPointerUp}
+            onPointerLeave={cycleLongPress.onPointerLeave}
+            onPointerCancel={cycleLongPress.onPointerCancel}
+            style={{ display: "flex", alignItems: "center", touchAction: "none" }}
+          >
+            <CycleIndicator blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} />
+          </div>
           <svg width="14" height="8" viewBox="0 0 14 8" style={{ opacity: 0.35, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.3s", flexShrink: 0 }}>
             <polyline points="1,7 7,1 13,7" fill="none" stroke={open ? phase.color : "rgba(255,255,255,0.7)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
