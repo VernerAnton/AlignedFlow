@@ -1,11 +1,18 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
-import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playExerciseStartSound, playDoneSound } from "./sounds";
+import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playExerciseStartSound, playDoneSound, playEndingTick } from "./sounds";
 import { sendNotification } from "./notifications";
 import { computeSectionColors } from "./dataStore";
 
 const SWITCH_RING_COUNT = 5;
+// Seconds before the end of the switch window where the soft pulse tone starts.
+// Below that the window is silent — a long switch shouldn't tick like a
+// metronome at bedtime. The glow pulse stays visible throughout regardless.
+const SWITCH_PULSE_COUNT = 15;
 // Final seconds of the get-into-position gap that show rings + a 3/2/1 number
 const TRANSITION_RING_COUNT = 3;
+// Seconds before an exercise ends where the warning tick starts — gives the
+// completion sound a runway instead of arriving as a single surprise beep.
+const EXERCISE_END_LEAD_COUNT = 8;
 
 function getEffectiveDuration(ex, switchBuffer) {
   return ex.bilateral ? ex.duration + switchBuffer : ex.duration;
@@ -177,7 +184,7 @@ function ExerciseCard({ ex, color, sideLabel, totalCount }) {
 
 // ── Root ────────────────────────────────────────────────────────────────────
 
-export default function EveningRoutine({ config, setConfig }) {
+export default function EveningRoutine({ config, patchPreset, onRuntime }) {
   const exercises = config.exercises;
   const switchBuffer = config.switchBuffer;
 
@@ -211,10 +218,26 @@ export default function EveningRoutine({ config, setConfig }) {
   const mutedRef = useRef(config.muted ?? false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
 
-  // Persist muted setting
+  // Persist muted setting into this preset. Skipped on mount for the same
+  // reason work mode skips its own: with sync on, writing back what was just
+  // read is a network write per app open, and can land stale over a change
+  // made elsewhere.
+  // Compared by value rather than counting runs — StrictMode invokes effects
+  // twice in development, so a first-run flag would let the second pass write.
+  const lastMutedRef = useRef(null);
   useEffect(() => {
-    setConfig(prev => ({ ...prev, evening: { ...prev.evening, muted } }));
+    if (lastMutedRef.current === muted) return;
+    const first = lastMutedRef.current === null;
+    lastMutedRef.current = muted;
+    if (first) return;
+    patchPreset({ muted });
   }, [muted]);
+
+  // Tells App whether a routine is under way here, so a preset edit arriving
+  // from another device waits rather than restarting the run in progress.
+  useEffect(() => {
+    onRuntime?.({ isPlaying });
+  }, [isPlaying, onRuntime]);
 
   // Bilateral sub-phase — derived from timeLeft for bilateral exercises
   // "side1" | "switching" | "side2" | null (for non-bilateral)
@@ -247,10 +270,21 @@ export default function EveningRoutine({ config, setConfig }) {
   // Pulse + ring tones — fire once per second tick during switching
   useEffect(() => {
     if (!isPlaying || phase !== "exercise" || subPhase !== "switching") return;
+    if (switchSecsLeft > SWITCH_PULSE_COUNT) return;
     if (switchSecsLeft > SWITCH_RING_COUNT) {
       playPulseTone(mutedRef.current);
     } else if (switchSecsLeft > 0) {
       playRingTone(mutedRef.current);
+    }
+  }, [timeLeft]);
+
+  // Ending tick — warns the exercise is about to finish, once per second for
+  // the final EXERCISE_END_LEAD_COUNT seconds. Skips the switch window itself
+  // so it never overlaps the pulse/ring tones above.
+  useEffect(() => {
+    if (!isPlaying || phase !== "exercise" || subPhase === "switching") return;
+    if (timeLeft > 0 && timeLeft <= EXERCISE_END_LEAD_COUNT) {
+      playEndingTick(mutedRef.current);
     }
   }, [timeLeft]);
 
@@ -762,7 +796,7 @@ export default function EveningRoutine({ config, setConfig }) {
                     fontSize: "0.9rem", letterSpacing: "0.3em", textTransform: "uppercase",
                     fontFamily: "'DM Mono', monospace", color: COLOR, opacity: 0.9,
                   }}>
-                    Switch Sides
+                    Switch Sides — {switchSecsLeft}s
                   </div>
                 </div>
               )}

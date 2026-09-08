@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { playStartSound, playStopSound, playMicroBreakSound, playShortBreakSound, playLongBreakSound, playDoneSound } from "./sounds";
 import { sendNotification } from "./notifications";
-import { computePhaseDim } from "./dataStore";
+import { computePhaseDim, loadSession, saveSession, loadTimer, saveTimer } from "./dataStore";
 
 // Exported so App can size the mode-switcher pill against the same breakpoint.
 export function useWindowWidth() {
@@ -13,6 +13,42 @@ export function useWindowWidth() {
     return () => window.removeEventListener("resize", fn);
   }, []);
   return w;
+}
+
+// Long-press detector — opens the cycle editor without relying on
+// double-click/double-tap: no precedent for that gesture elsewhere in this
+// app, and it's riskier on a mobile PWA where it can collide with the
+// browser's native zoom/selection gestures.
+//
+// The hold is deliberately long. Movement cancels it, so a *still* pointer is
+// exactly what lets it fire — and a deliberate mouse click on a small target
+// routinely holds the button for 400-500ms without moving. At that threshold
+// an ordinary click on the drawer handle would trip the hold, swallow its own
+// click and pop the editor open on its own; 700ms sits clear of that.
+function useLongPress(onLongPress, ms = 700) {
+  const timerRef = useRef(null);
+  const firedRef = useRef(false);
+  const startRef = useRef({ x: 0, y: 0 });
+
+  const clear = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
+
+  return {
+    onPointerDown: (e) => {
+      firedRef.current = false;
+      startRef.current = { x: e.clientX, y: e.clientY };
+      clear();
+      timerRef.current = setTimeout(() => { firedRef.current = true; onLongPress(); }, ms);
+    },
+    // A move beyond a small threshold reads as a scroll/drag, not a hold.
+    onPointerMove: (e) => {
+      const dx = e.clientX - startRef.current.x, dy = e.clientY - startRef.current.y;
+      if (Math.hypot(dx, dy) > 10) clear();
+    },
+    onPointerUp: clear,
+    onPointerLeave: clear,
+    onPointerCancel: clear,
+    didFire: () => firedRef.current,
+  };
 }
 
 // ── Content panels ──────────────────────────────────────────────────────────
@@ -105,13 +141,28 @@ const LongBreakContent = ({ phase, exercises, summary, heading }) => {
 
 // ── Cycle indicator ──────────────────────────────────────────────────────────
 
-// One diamond per focus block in the current long-break cycle, split into sets
-// by a divider at each short break. Filled = done, ringed = current.
+// One diamond per focus block in the current long-break cycle, split into
+// sets by a divider at each short break, ending in a dot for the long break.
+// Shared by the compact read-only handle indicator and the bigger tap-to-jump
+// editor below, so both always agree on the cycle's shape.
+function buildCycleLayout(blocksPerSet, setsUntilLong, done) {
+  const total = blocksPerSet * setsUntilLong;
+  const items = [];
+  for (let i = 0; i < total; i++) {
+    items.push({ type: "block", index: i, isDone: i < done, isCurrent: i === done });
+    // Divider after each completed set, except at the very end of the cycle
+    const atSetEnd = (i + 1) % blocksPerSet === 0 && i + 1 < total;
+    if (atSetEnd) items.push({ type: "divider", workCountAfter: i + 1 });
+  }
+  items.push({ type: "long" });
+  return { total, items };
+}
+
 // Falls back to a numeric readout once the cycle is too long to draw.
 const MAX_DRAWN_BLOCKS = 14;
 
 const CycleIndicator = ({ blocksPerSet, setsUntilLong, done, phases }) => {
-  const total = blocksPerSet * setsUntilLong;
+  const { total, items } = buildCycleLayout(blocksPerSet, setsUntilLong, done);
   // Tighten up for longer cycles so they still fit a phone's width
   const size = total > 9 ? 6 : 7;
   const gap = total > 9 ? 3 : 4;
@@ -126,27 +177,82 @@ const CycleIndicator = ({ blocksPerSet, setsUntilLong, done, phases }) => {
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap }}>
-      {Array.from({ length: total }, (_, i) => {
-        const isDone = i < done;
-        const isCurrent = i === done;
-        const marks = [
-          <div key={`b${i}`} style={{
-            width: size, height: size, transform: "rotate(45deg)", flexShrink: 0,
-            background: isDone ? phases.work.color : "transparent",
-            border: `1px solid ${isDone || isCurrent ? phases.work.color : "rgba(255,255,255,0.22)"}`,
-            opacity: isCurrent ? 1 : isDone ? 0.55 : 0.5,
-            boxShadow: isCurrent ? `0 0 5px ${phases.work.color}99` : "none",
-            transition: "all 0.3s",
-          }} />,
-        ];
-        // Divider after each completed set, except at the very end of the cycle
-        const atSetEnd = (i + 1) % blocksPerSet === 0 && i + 1 < total;
-        if (atSetEnd) {
-          marks.push(<div key={`s${i}`} style={{ width: 1, height: size + 2, background: phases.short.color, opacity: 0.45, margin: "0 1px", flexShrink: 0 }} />);
+      {items.map((item, i) => {
+        if (item.type === "block") {
+          const { isDone, isCurrent } = item;
+          return (
+            <div key={i} style={{
+              width: size, height: size, transform: "rotate(45deg)", flexShrink: 0,
+              background: isDone ? phases.work.color : "transparent",
+              border: `1px solid ${isDone || isCurrent ? phases.work.color : "rgba(255,255,255,0.22)"}`,
+              opacity: isCurrent ? 1 : isDone ? 0.55 : 0.5,
+              boxShadow: isCurrent ? `0 0 5px ${phases.work.color}99` : "none",
+              transition: "all 0.3s",
+            }} />
+          );
         }
-        return marks;
+        if (item.type === "divider") {
+          return <div key={i} style={{ width: 1, height: size + 2, background: phases.short.color, opacity: 0.45, margin: "0 1px", flexShrink: 0 }} />;
+        }
+        return <div key={i} style={{ width: 3, height: 3, borderRadius: "50%", background: phases.long.color, opacity: 0.7, marginLeft: 1, flexShrink: 0 }} />;
       })}
-      <div style={{ width: 3, height: 3, borderRadius: "50%", background: phases.long.color, opacity: 0.7, marginLeft: 1, flexShrink: 0 }} />
+    </div>
+  );
+};
+
+// Bigger, tappable version of the same layout — lets the cycle be jumped to
+// any work block, short break, or long break directly. Exists for correcting
+// where the app thinks you are (e.g. reopening it expecting to pick up
+// mid-block rather than at whatever it last remembered) rather than only
+// ever advancing by running the timer through it. Micro breaks aren't
+// jumpable — they're not represented in the cycle layout at all, same as the
+// compact indicator above.
+const CycleEditor = ({ blocksPerSet, setsUntilLong, done, phases, phaseId, disabled, onJump }) => {
+  const { items } = buildCycleLayout(blocksPerSet, setsUntilLong, done);
+  const size = 14;
+
+  const targetProps = (color, isCurrent) => ({
+    className: `cycle-jump-target${disabled ? " disabled" : ""}`,
+    style: { "--pulse-color": color, boxShadow: isCurrent ? `0 0 8px ${color}99` : "none" },
+  });
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "0.5rem 0" }}>
+      {items.map((item, i) => {
+        if (item.type === "block") {
+          const { index, isDone, isCurrent } = item;
+          const t = targetProps(phases.work.color, isCurrent && phaseId === "work");
+          return (
+            <div key={i} {...t} onClick={() => !disabled && onJump("work", index)} style={{
+              ...t.style,
+              width: size, height: size, transform: "rotate(45deg)", flexShrink: 0,
+              background: isDone ? phases.work.color : "transparent",
+              border: `1.5px solid ${isDone || isCurrent ? phases.work.color : "rgba(255,255,255,0.25)"}`,
+              opacity: isCurrent ? 1 : isDone ? 0.6 : 0.55,
+            }} />
+          );
+        }
+        if (item.type === "divider") {
+          const isCurrent = phaseId === "short" && done === item.workCountAfter;
+          const t = targetProps(phases.short.color, isCurrent);
+          return (
+            <div key={i} {...t} onClick={() => !disabled && onJump("short", item.workCountAfter)} style={{
+              ...t.style,
+              width: size * 0.55, height: size + 4, borderRadius: 2, flexShrink: 0,
+              background: phases.short.color, opacity: isCurrent ? 0.9 : 0.4,
+            }} />
+          );
+        }
+        const isCurrent = phaseId === "long";
+        const t = targetProps(phases.long.color, isCurrent);
+        return (
+          <div key={i} {...t} onClick={() => !disabled && onJump("long", 0)} style={{
+            ...t.style,
+            width: size * 0.65, height: size * 0.65, borderRadius: "50%", flexShrink: 0, marginLeft: 2,
+            background: phases.long.color, opacity: isCurrent ? 0.95 : 0.5,
+          }} />
+        );
+      })}
     </div>
   );
 };
@@ -334,21 +440,30 @@ const TaskCompleteOverlay = ({ color, minutes, nextMinutes, onChangeNext, onCont
 // Micro moves in half minutes — at that length 30 s is a meaningful difference.
 const DURATION_RANGES = { work: [5, 50, 1], micro: [0.5, 5, 0.5], short: [1, 15, 1], long: [1, 35, 1] };
 
+// Whether the settings drawer is open, held at module scope so it outlives a
+// remount of the mode. App keys each mode on its preset's revision, so sync
+// adopting a change rebuilds this whole tree — which would otherwise slam the
+// drawer shut mid-adjustment, since local state cannot survive that. Module
+// scope rather than storage is the point: it should outlast a remount, but a
+// fresh page load should still start closed.
+let drawerOpenAcrossRemounts = false;
+let cycleEditorOpenAcrossRemounts = false;
+
 const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, microEnabled, toggleMicro, loopsUntilShort, setLoopsUntilShort, setsUntilLong, setSetsUntilLong, blocksPerSet, workCount, muted, toggleMuted, taskEnabled, toggleTaskTimer, taskDuration, setTaskDuration, taskElapsed, onResetTask, showNumbers, toggleShowNumbers }) => {
-  const [open, setOpen] = useState(false);
-  const drawerRef = useRef(null);
+  const [open, setOpenState] = useState(drawerOpenAcrossRemounts);
+  const setOpen = (v) => { drawerOpenAcrossRemounts = v; setOpenState(v); };
+  // Long-press-triggered "jump anywhere in the cycle" editor — independent of
+  // the drawer's own open/closed state so it works from the collapsed handle.
+  const [cycleEditorOpen, setCycleEditorOpenState] = useState(cycleEditorOpenAcrossRemounts);
+  const setCycleEditorOpen = (v) => { cycleEditorOpenAcrossRemounts = v; setCycleEditorOpenState(v); };
   const drawerWidth = useWindowWidth();
   const drawerMobile = drawerWidth < 600;
   const fillOffset = drawerMobile ? 38 : 45;
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e) => {
-      if (drawerRef.current && !drawerRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  // Same rail width the background fill/timer rail use, so the expanded
+  // editor spans exactly the visible colored area rather than a narrower
+  // width of its own.
+  const railW = drawerMobile ? 44 : 52;
+  const cycleLongPress = useLongPress(() => setCycleEditorOpen(true));
 
   const btnBase = { border: "1px solid rgba(255,255,255,0.18)", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" };
 
@@ -357,7 +472,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
   const visiblePhases = Object.values(phases).filter((p) => p.id !== "micro" || microEnabled);
 
   return (
-    <div ref={drawerRef} style={{ position: "fixed", bottom: 0, left: `calc(50% + ${fillOffset / 2}px)`, transform: "translateX(-50%)", zIndex: 20, pointerEvents: open ? "auto" : "none" }}>
+    <div style={{ position: "fixed", bottom: 0, left: `calc(50% + ${fillOffset / 2}px)`, transform: "translateX(-50%)", zIndex: 20, pointerEvents: open ? "auto" : "none" }}>
       {/* Drawer panel */}
       <div style={{
         background: "rgba(15,14,12,0.98)",
@@ -368,9 +483,15 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
         transition: "transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
         overflow: "hidden",
       }}>
-        {/* Chevron handle */}
+        {/* Chevron handle — a tap anywhere along it toggles the drawer, or
+            closes the cycle editor if that's open. The hold-to-open-the-editor
+            gesture lives on the diamonds alone (below), so the chevron itself
+            is only ever an open/close control. */}
         <div
-          onClick={() => setOpen(!open)}
+          onClick={() => {
+            if (cycleEditorOpen) { setCycleEditorOpen(false); return; }
+            setOpen(!open);
+          }}
           style={{
             height: 32,
             display: "flex",
@@ -382,11 +503,61 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             padding: "0 0.9rem",
           }}
         >
-          <CycleIndicator blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} />
+          {/* Holding the diamonds opens the cycle editor. When that fires, the
+              press's own click is stopped here so it doesn't also reach the
+              handle's toggle above. */}
+          <div
+            onClick={(e) => { if (cycleLongPress.didFire()) e.stopPropagation(); }}
+            onPointerDown={cycleLongPress.onPointerDown}
+            onPointerMove={cycleLongPress.onPointerMove}
+            onPointerUp={cycleLongPress.onPointerUp}
+            onPointerLeave={cycleLongPress.onPointerLeave}
+            onPointerCancel={cycleLongPress.onPointerCancel}
+            style={{ display: "flex", alignItems: "center", touchAction: "none" }}
+          >
+            <CycleIndicator blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} />
+          </div>
           <svg width="14" height="8" viewBox="0 0 14 8" style={{ opacity: 0.35, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.3s", flexShrink: 0 }}>
             <polyline points="1,7 7,1 13,7" fill="none" stroke={open ? phase.color : "rgba(255,255,255,0.7)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
+
+        {/* Expanded cycle editor — spans the full colored area rather than
+            this narrow, centered panel, with bigger tap targets for jumping
+            straight to a block, short break, or the long break. Portaled to
+            <body>: this drawer's own container is `transform`-positioned,
+            which would otherwise become the containing block for a "fixed"
+            child and confine it to this panel's narrow, off-center box
+            instead of the viewport. */}
+        {cycleEditorOpen && createPortal(
+          <div style={{
+            position: "fixed",
+            left: drawerMobile ? railW - 6 : railW - 7,
+            right: 0,
+            bottom: 0,
+            zIndex: 25,
+            pointerEvents: "auto",
+            background: "rgba(15,14,12,0.98)",
+            backdropFilter: "blur(16px)",
+            borderTop: "1px solid rgba(255,255,255,0.12)",
+            padding: "0.35rem 1rem",
+          }}>
+            {/* Reserve room for the chevron on the right (and matching
+                breathing room on the left) via padding, so the diamond row
+                gets the rest of the bar's full width to center and wrap
+                within — an absolutely-positioned `left: 50%` wrapper here
+                would instead give it only the half of the bar to the right
+                of center to work with, wrapping it far earlier than it
+                needs to. */}
+            <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center", minHeight: 32, padding: "0 28px" }}>
+              <CycleEditor blocksPerSet={blocksPerSet} setsUntilLong={setsUntilLong} done={workCount} phases={phases} phaseId={phaseId} disabled={isPlaying} onJump={(id, newWorkCount) => setPhaseId(id, newWorkCount)} />
+              <svg width="14" height="8" viewBox="0 0 14 8" onClick={() => setCycleEditorOpen(false)} style={{ opacity: 0.4, cursor: "pointer", flexShrink: 0, position: "absolute", right: 0, top: "50%", transform: "translateY(-50%) rotate(180deg)" }}>
+                <polyline points="1,7 7,1 13,7" fill="none" stroke={phase.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          </div>,
+          document.body
+        )}
 
         {/* Drawer content */}
         {/* Scrolls rather than running off the top of short screens — the
@@ -543,29 +714,58 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
-  const [phaseId, setPhaseId] = useState("work");
+export default function AlignedFlow({ config, patchPreset, onTaskStatus, onRuntime, remoteSession }) {
+  // Restore where the diamonds left off — which phase and how far into the
+  // long-break cycle — so closing/refreshing the app doesn't lose your place.
+  const restoredSession = useMemo(() => loadSession(), []);
+  const [phaseId, setPhaseId] = useState(() => restoredSession?.phaseId || "work");
   const [durations, setDurations] = useState(() => config.durations || { work: 25, micro: 2, short: 5, long: 15 });
+  // Always paused on open, whatever was restored. A countdown that resumes on
+  // its own would run unwatched after a crash.
   const [isPlaying, setIsPlaying] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(() => (config.durations?.work || 25) * 60);
+
+  // The countdown is restored too, so a browser crash mid-block doesn't cost
+  // the block. Three things have to line up for a saved remainder to mean
+  // anything, on top of the age check in loadTimer:
+  //   · the same preset — 20 minutes left is nonsense against 8-minute blocks
+  //   · the same phase — a remainder only counts against the phase it ran in
+  //   · within the phase's current length, since that preset's durations may
+  //     have been edited on another device in the meantime
+  const restoredTimer = useMemo(() => {
+    const t = loadTimer();
+    if (!t) return null;
+    const phase = restoredSession?.phaseId || "work";
+    if (t.presetId !== config.id || t.phaseId !== phase) return null;
+    const full = (config.durations?.[phase] || 25) * 60;
+    return { ...t, timeLeft: Math.min(Math.max(0, t.timeLeft), full) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [timeLeft, setTimeLeft] = useState(() =>
+    restoredTimer ? restoredTimer.timeLeft : (config.durations?.[restoredSession?.phaseId || "work"] || 25) * 60);
   // Focus blocks completed within the current long-break cycle (resets at each long break)
-  const [workCount, setWorkCount] = useState(0);
+  const [workCount, setWorkCount] = useState(() => restoredSession?.workCount ?? 0);
   const [microEnabled, setMicroEnabled] = useState(() => config.microEnabled ?? false);
   const [loopsUntilShort, setLoopsUntilShort] = useState(() => config.loopsUntilShort ?? 3);
   const [setsUntilLong, setSetsUntilLong] = useState(() => config.setsUntilLong ?? 4);
   const [muted, setMuted] = useState(() => config.muted ?? false);
   // Task timer — a focus-time budget that spans the loops. taskElapsed counts
-  // only work-phase seconds; it is intentionally not persisted, matching the
-  // rest of the runtime timer state, so a reload starts the task fresh.
+  // only work-phase seconds, and is restored alongside the phase countdown so
+  // a crash costs neither.
   const [taskEnabled, setTaskEnabled] = useState(() => config.taskTimerEnabled ?? false);
   const [taskDuration, setTaskDuration] = useState(() => config.taskDuration ?? 50);
   const [taskShowNumbers, setTaskShowNumbers] = useState(() => config.taskShowNumbers ?? true);
-  const [taskElapsed, setTaskElapsed] = useState(0);
-  const [taskDone, setTaskDone] = useState(false);
-  // The budget that just finished, frozen at the moment it did — the
-  // overlay reports this, while taskDuration below is free to be edited
-  // there for the next task.
-  const [taskDoneMinutes, setTaskDoneMinutes] = useState(0);
+  const [taskElapsed, setTaskElapsed] = useState(() => restoredTimer?.taskElapsed ?? 0);
+  // Restored as well, so a budget already spent doesn't announce itself again
+  // the moment the restored block is started.
+  const [taskDone, setTaskDone] = useState(() => restoredTimer?.taskDone ?? false);
+  // The budget that just finished, frozen at the moment it did — the overlay
+  // reports this, while taskDuration stays free to be edited there for the
+  // next task. Restored alongside taskDone, since that can bring the overlay
+  // back on load: without it the card would announce "0s of focus, done".
+  // Falls back to the current budget for a timer saved before this existed.
+  const [taskDoneMinutes, setTaskDoneMinutes] = useState(
+    () => restoredTimer?.taskDoneMinutes ?? config.taskDuration ?? 50);
   const taskEnabledRef = useRef(config.taskTimerEnabled ?? false);
   const mutedRef = useRef(config.muted ?? false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
@@ -604,10 +804,46 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
   const blocksPerSet = microEnabled ? loopsUntilShort : 1;
   const blocksUntilLong = blocksPerSet * setsUntilLong;
 
-  // Persist settings changes back to config
+  // Persist settings changes back into the preset they belong to, so a change
+  // made in the drawer sticks to this routine rather than to whichever one is
+  // switched to next.
+  //
+  // Not written on mount: the values are the ones just read from the preset, so
+  // locally it was a no-op — but with sync on it becomes a network write every
+  // time the app opens, and one that can put this device's mounted-at values
+  // over a change another device made in the meantime. Compared by value rather
+  // than counting runs, since StrictMode invokes effects twice in development
+  // and a first-run flag would let the second pass through.
+  const lastSettingsRef = useRef(null);
   useEffect(() => {
-    setConfig(prev => ({ ...prev, pomodoro: { ...prev.pomodoro, durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskTimerEnabled: taskEnabled, taskDuration, taskShowNumbers } }));
+    const settings = { durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskTimerEnabled: taskEnabled, taskDuration, taskShowNumbers };
+    const json = JSON.stringify(settings);
+    if (lastSettingsRef.current === json) return;
+    const first = lastSettingsRef.current === null;
+    lastSettingsRef.current = json;
+    if (first) return;
+    patchPreset(settings);
   }, [durations, microEnabled, loopsUntilShort, setsUntilLong, muted, taskEnabled, taskDuration, taskShowNumbers]);
+
+  // Persist the diamonds' cycle position so it survives a close/reopen or
+  // hard refresh. This is the half that syncs between devices.
+  useEffect(() => {
+    saveSession({ phaseId, workCount });
+  }, [phaseId, workCount]);
+
+  // The countdown, saved on every tick — a crash can happen at any moment, so
+  // there is no cadence to batch to. One small write a second while running,
+  // and none while paused. Stays on this device; see saveTimer.
+  useEffect(() => {
+    saveTimer({ presetId: config.id, phaseId, timeLeft, taskElapsed, taskDone, taskDoneMinutes });
+  }, [config.id, phaseId, timeLeft, taskElapsed, taskDone, taskDoneMinutes]);
+
+  // Handed to App for sync: the cycle position is shared between devices, and
+  // isPlaying is what tells App whether a remote change can be applied now or
+  // has to wait for this block to end.
+  useEffect(() => {
+    onRuntime?.({ isPlaying, session: { phaseId, workCount } });
+  }, [isPlaying, phaseId, workCount, onRuntime]);
 
   const PHASES = useMemo(() => {
     const p = config.phases || { work: { color: "#4A90D9", tag: "FOCUS", label: "Work Session" }, micro: { color: "#e8899e", tag: "MICRO", label: "Micro Break" }, short: { color: "#3aaa7a", tag: "SHORT BREAK", label: "Micro-Reset" }, long: { color: "#9b72cf", tag: "LONG BREAK", label: "Long Break" } };
@@ -633,10 +869,21 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
   useEffect(() => { workCountRef.current = workCount; }, [workCount]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
-  // Reset timeLeft when duration for the current phase changes (slider is disabled while playing)
+  // Reset timeLeft when the duration for the current phase changes (the slider
+  // is disabled while playing).
+  //
+  // Gated on the value actually having changed, not on a first-run flag: this
+  // effect must not fire on mount, where it would overwrite a countdown
+  // restored from a crash with the phase's full duration. A run-count guard is
+  // not enough — StrictMode invokes effects twice in development, and the
+  // second pass would sail through it.
+  const lastPhaseDurationRef = useRef(durations[phaseId]);
   useEffect(() => {
+    const secs = durations[phaseId];
+    if (secs === lastPhaseDurationRef.current) return;
+    lastPhaseDurationRef.current = secs;
     if (!isPlaying) {
-      setTimeLeft(durations[phaseId] * 60);
+      setTimeLeft(secs * 60);
     }
   }, [durations[phaseId]]);
 
@@ -852,9 +1099,12 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
     playStartSound(mutedRef.current);
   };
 
-  // Manual phase change (from drawer)
-  const handlePhaseChange = (id) => {
+  // Manual phase change (from drawer). newWorkCount is only passed by the
+  // cycle editor jumping to a specific block/break — the ordinary phase
+  // pills leave the block count untouched.
+  const handlePhaseChange = (id, newWorkCount) => {
     setPhaseId(id); phaseIdRef.current = id;
+    if (newWorkCount !== undefined) { setWorkCount(newWorkCount); workCountRef.current = newWorkCount; }
     setTimeLeft(durations[id] * 60);
     setIsPlaying(false);
     // Animate waterline back to 100%
@@ -864,6 +1114,21 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
     segmentFromRef.current = smoothFillPct;
     segmentToRef.current = 100;
   };
+
+  // A cycle position reached on another device. App only hands one down while
+  // this device is idle, so adopting it is safe: the app lands paused at the
+  // start of the phase the other machine left off in. That is the whole point
+  // of sharing it — four focus blocks spread across a laptop and a desktop
+  // still add up to one long break, instead of each device counting its own.
+  const adoptedRef = useRef(null);
+  useEffect(() => {
+    if (!remoteSession || isPlayingRef.current) return;
+    const json = JSON.stringify(remoteSession);
+    if (json === adoptedRef.current) return;
+    adoptedRef.current = json;
+    if (remoteSession.phaseId === phaseIdRef.current && remoteSession.workCount === workCountRef.current) return;
+    handlePhaseChange(remoteSession.phaseId, remoteSession.workCount);
+  }, [remoteSession]);
 
   const onPlayPause = () => {
     setIsPlaying((p) => {
@@ -891,7 +1156,11 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
     <div style={{ position: "relative", minHeight: "100%", background: "#0f0e0c", fontFamily: "Georgia, serif", overflow: "hidden" }}>
       <style dangerouslySetInnerHTML={{ __html: `.pomo-card::-webkit-scrollbar{display:none}
 @keyframes taskFade { from { opacity: 0 } to { opacity: 1 } }
-@keyframes taskRise { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }` }} />
+@keyframes taskRise { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
+@keyframes cyclePulse { 0%, 100% { box-shadow: 0 0 0 0 var(--pulse-color, transparent); } 50% { box-shadow: 0 0 16px 4px var(--pulse-color, transparent); } }
+.cycle-jump-target { cursor: pointer; transition: opacity 0.15s; }
+.cycle-jump-target:hover, .cycle-jump-target:active { animation: cyclePulse 1.1s ease-in-out infinite; }
+.cycle-jump-target.disabled { cursor: default; pointer-events: none; opacity: 0.3 !important; animation: none; }` }} />
 
       {/* Background fill — tap to play/pause */}
       <div onClick={onPlayPause} style={{ position: "absolute", bottom: 0, left: isMobile ? railW - 6 : railW - 7, right: 0, height: `${fillPct}%`, background: phase.colorDim, transition: "background 0.6s ease", cursor: "pointer", zIndex: 0 }} />

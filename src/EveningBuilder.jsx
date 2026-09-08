@@ -1,19 +1,20 @@
 import { useState, useEffect, useRef } from "react";
-import { computeSectionColors, exportConfig, validateAndParseConfig, nextId, DEFAULT_CONFIG } from "./dataStore";
+import { computeSectionColors, getActivePreset, patchPreset, nextId, DEFAULT_CONFIG } from "./dataStore";
+import PresetBar from "./PresetBar";
 import VersionStamp from "./VersionStamp";
+import SyncPanel from "./SyncPanel";
 
 const FONT = "'DM Mono', monospace";
 const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#f0ece4", fontFamily: FONT, fontSize: "0.78rem", padding: "0.4rem 0.6rem", width: "100%", outline: "none" };
 const btnSmall = { border: "1px solid rgba(255,255,255,0.15)", background: "transparent", borderRadius: 6, color: "rgba(255,255,255,0.5)", fontFamily: FONT, fontSize: "0.6rem", letterSpacing: "0.08em", cursor: "pointer", padding: "0.3rem 0.55rem" };
 const btnDanger = { ...btnSmall, borderColor: "rgba(200,80,80,0.4)", color: "#c85050" };
 
-export default function EveningBuilder({ config, setConfig, onBack }) {
-  const [evening, setEvening] = useState(config.evening);
+export default function EveningBuilder({ store, setStore, sync, onBack }) {
+  const active = getActivePreset(store);
+  const [evening, setEvening] = useState(active);
   const [expandedCard, setExpandedCard] = useState(null);
   const [showSections, setShowSections] = useState(false);
-  const [importError, setImportError] = useState(null);
   const [showResetMenu, setShowResetMenu] = useState(false);
-  const fileRef = useRef(null);
   const resetRef = useRef(null);
 
   useEffect(() => {
@@ -64,11 +65,21 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
     }
   };
 
-  // Auto-save
+  // Auto-save. The write targets the preset this builder opened on, captured
+  // at mount: switching preset remounts the builder, and a debounce still in
+  // flight must not land in whichever routine was picked next.
+  const editingId = useRef(store.activeId);
+  const draftRef = useRef(evening);
+  draftRef.current = evening;
   useEffect(() => {
-    const t = setTimeout(() => setConfig(prev => ({ ...prev, evening })), 300);
+    const t = setTimeout(() => setStore(s => patchPreset(s, editingId.current, draftRef.current)), 300);
     return () => clearTimeout(t);
   }, [evening]);
+
+  // Leaving the builder — going back, or switching preset — cancels that
+  // pending timeout, so the last keystrokes are flushed on the way out
+  // instead of being lost with it.
+  useEffect(() => () => setStore(s => patchPreset(s, editingId.current, draftRef.current)), []);
 
   const updateExercise = (id, patch) => {
     setEvening(prev => ({
@@ -121,24 +132,6 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
     setEvening(prev => ({ ...prev, sections: prev.sections.filter((_, i) => i !== idx) }));
   };
 
-  const handleImport = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setImportError(null);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const result = validateAndParseConfig(ev.target.result);
-      if (result.ok) {
-        setConfig(result.config);
-        setEvening(result.config.evening);
-      } else {
-        setImportError(result.error);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  };
-
   const updateStep = (exId, stepIdx, value) => {
     setEvening(prev => ({
       ...prev,
@@ -186,8 +179,6 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
 
   return (
     <div style={{ position: "relative", height: "100%", background: "#0f0e0c", overflow: "auto", fontFamily: FONT, color: "#f0ece4", WebkitOverflowScrolling: "touch" }}>
-      <input ref={fileRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
-
       {/* Header */}
       <div style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(15,14,12,0.95)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "0.7rem 1rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.7rem" }}>
@@ -214,15 +205,9 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
               </div>
             )}
           </div>
-          <button onClick={() => exportConfig(config)} style={btnSmall}>EXPORT</button>
-          <button onClick={() => fileRef.current?.click()} style={btnSmall}>IMPORT</button>
         </div>
       </div>
-      {importError && (
-        <div style={{ padding: "0.5rem 1rem", background: "rgba(200,80,80,0.12)", color: "#c85050", fontSize: "0.7rem" }}>
-          Import failed: {importError}
-        </div>
-      )}
+      <PresetBar kind="evening" store={store} setStore={setStore} />
 
       <div style={{ padding: "1rem", maxWidth: 600, margin: "0 auto" }}>
 
@@ -255,14 +240,14 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
           <div style={{ flex: 1, minWidth: 180 }}>
             <div style={{ fontSize: "0.58rem", letterSpacing: "0.12em", color: "#555", marginBottom: "0.3rem" }}>SWITCH-SIDES TIME</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input type="range" min={4} max={30} step={1} value={evening.switchBuffer} onChange={e => setEvening(prev => ({ ...prev, switchBuffer: Number(e.target.value) }))} style={{ flex: 1, accentColor: evening.sections[0]?.color || "#c4956a" }} />
+              <input type="range" min={4} max={45} step={1} value={evening.switchBuffer} onChange={e => setEvening(prev => ({ ...prev, switchBuffer: Number(e.target.value) }))} style={{ flex: 1, accentColor: evening.sections[0]?.color || "#c4956a" }} />
               <span style={{ fontSize: "0.7rem", color: evening.sections[0]?.color || "#c4956a", minWidth: 24 }}>{evening.switchBuffer}s</span>
             </div>
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
             <div style={{ fontSize: "0.58rem", letterSpacing: "0.12em", color: "#555", marginBottom: "0.3rem" }}>TRANSITION TIME</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input type="range" min={5} max={20} step={1} value={evening.transitionTime} onChange={e => setEvening(prev => ({ ...prev, transitionTime: Number(e.target.value) }))} style={{ flex: 1, accentColor: evening.sections[0]?.color || "#c4956a" }} />
+              <input type="range" min={5} max={90} step={1} value={evening.transitionTime} onChange={e => setEvening(prev => ({ ...prev, transitionTime: Number(e.target.value) }))} style={{ flex: 1, accentColor: evening.sections[0]?.color || "#c4956a" }} />
               <span style={{ fontSize: "0.7rem", color: evening.sections[0]?.color || "#c4956a", minWidth: 24 }}>{evening.transitionTime}s</span>
             </div>
           </div>
@@ -309,6 +294,7 @@ export default function EveningBuilder({ config, setConfig, onBack }) {
 
         <button onClick={addExercise} style={{ ...btnSmall, width: "100%", marginTop: "0.6rem", padding: "0.55rem 0", textAlign: "center" }}>+ ADD EXERCISE</button>
 
+        {sync && <SyncPanel sync={sync} />}
         <VersionStamp />
         <div style={{ height: 80 }} />{/* bottom spacer */}
       </div>
