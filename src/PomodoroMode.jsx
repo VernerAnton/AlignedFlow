@@ -399,17 +399,22 @@ const DURATION_RANGES = { work: [5, 50, 1], micro: [0.5, 5, 0.5], short: [1, 15,
 // admin task at one end and a deep-work block at the other.
 const TASK_RANGE = [10, 120, 5];
 
+// Whether the settings drawer is open, held at module scope so it outlives a
+// remount of the mode. App keys each mode on its preset's revision, so sync
+// adopting a change rebuilds this whole tree — which would otherwise slam the
+// drawer shut mid-adjustment, since local state cannot survive that. Module
+// scope rather than storage is the point: it should outlast a remount, but a
+// fresh page load should still start closed.
+let drawerOpenAcrossRemounts = false;
+let cycleEditorOpenAcrossRemounts = false;
+
 const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, microEnabled, toggleMicro, loopsUntilShort, setLoopsUntilShort, setsUntilLong, setSetsUntilLong, blocksPerSet, workCount, muted, toggleMuted, taskEnabled, toggleTaskTimer, taskDuration, setTaskDuration, taskElapsed, onResetTask, showNumbers, toggleShowNumbers }) => {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(drawerOpenAcrossRemounts);
+  const setOpen = (v) => { drawerOpenAcrossRemounts = v; setOpenState(v); };
   // Long-press-triggered "jump anywhere in the cycle" editor — independent of
   // the drawer's own open/closed state so it works from the collapsed handle.
-  const [cycleEditorOpen, setCycleEditorOpen] = useState(false);
-  const drawerRef = useRef(null);
-  // The expanded editor is portaled straight to <body> (see below) so its
-  // "fixed" positioning resolves against the viewport rather than this
-  // panel's own transformed, off-center box — it needs its own ref for the
-  // outside-click check below since it isn't a DOM descendant of drawerRef.
-  const editorRef = useRef(null);
+  const [cycleEditorOpen, setCycleEditorOpenState] = useState(cycleEditorOpenAcrossRemounts);
+  const setCycleEditorOpen = (v) => { cycleEditorOpenAcrossRemounts = v; setCycleEditorOpenState(v); };
   const drawerWidth = useWindowWidth();
   const drawerMobile = drawerWidth < 600;
   const fillOffset = drawerMobile ? 38 : 45;
@@ -419,24 +424,6 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
   const railW = drawerMobile ? 44 : 52;
   const cycleLongPress = useLongPress(() => setCycleEditorOpen(true));
 
-  // Only the transient editor bar dismisses itself on an outside press. The
-  // drawer stays put until the chevron closes it — it's a panel you work in,
-  // and the whole background behind it is a play/pause tap target, so
-  // closing on any stray press outside made it vanish mid-adjustment.
-  // Presses inside the drawer are exempt too: the handle's own click already
-  // closes the editor, and dismissing it here first would let that click fall
-  // through and toggle the drawer instead.
-  useEffect(() => {
-    if (!cycleEditorOpen) return;
-    const handler = (e) => {
-      const inDrawer = drawerRef.current && drawerRef.current.contains(e.target);
-      const inEditor = editorRef.current && editorRef.current.contains(e.target);
-      if (!inDrawer && !inEditor) setCycleEditorOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [cycleEditorOpen]);
-
   const btnBase = { border: "1px solid rgba(255,255,255,0.18)", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" };
 
   // With micro breaks off the phase is inert — keep it out of the UI so the
@@ -444,7 +431,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
   const visiblePhases = Object.values(phases).filter((p) => p.id !== "micro" || microEnabled);
 
   return (
-    <div ref={drawerRef} style={{ position: "fixed", bottom: 0, left: `calc(50% + ${fillOffset / 2}px)`, transform: "translateX(-50%)", zIndex: 20, pointerEvents: open ? "auto" : "none" }}>
+    <div style={{ position: "fixed", bottom: 0, left: `calc(50% + ${fillOffset / 2}px)`, transform: "translateX(-50%)", zIndex: 20, pointerEvents: open ? "auto" : "none" }}>
       {/* Drawer panel */}
       <div style={{
         background: "rgba(15,14,12,0.98)",
@@ -502,7 +489,7 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
             child and confine it to this panel's narrow, off-center box
             instead of the viewport. */}
         {cycleEditorOpen && createPortal(
-          <div ref={editorRef} style={{
+          <div style={{
             position: "fixed",
             left: drawerMobile ? railW - 6 : railW - 7,
             right: 0,
