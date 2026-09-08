@@ -232,10 +232,22 @@ const fmtClock = (s) => {
 // drawn as a segment of the mode-switcher pill, so the two read as one control
 // cluster instead of a badge floating beside it.
 
+// Task budget bounds, [min, max, step] in minutes. Wide enough for a short
+// admin task at one end and a deep-work block at the other. Shared by the
+// settings drawer and the overlay's own next-task editor.
+const TASK_RANGE = [10, 120, 5];
+
 // Shown the moment the budget runs out, over a blurred, frozen app. Portalled
 // to the body so the blur covers the mode switcher too — the whole surface
 // goes quiet, which is the point of the interruption.
-const TaskCompleteOverlay = ({ color, minutes, onContinue }) => createPortal(
+//
+// `minutes` is the budget that just finished — snapshotted by the caller, so
+// editing the next task's length below never rewrites the line reporting what
+// was completed.
+const TaskCompleteOverlay = ({ color, minutes, nextMinutes, onChangeNext, onContinue }) => {
+  const [editing, setEditing] = useState(false);
+  const [min, max, step] = TASK_RANGE;
+  return createPortal(
   <div style={{
     position: "fixed", inset: 0, zIndex: 100,
     display: "flex", alignItems: "center", justifyContent: "center",
@@ -277,10 +289,43 @@ const TaskCompleteOverlay = ({ color, minutes, onContinue }) => createPortal(
       >
         START NEXT TASK
       </button>
+
+      {/* Sits below the primary action and swaps in place, so opening it
+          grows the card downward instead of shifting the button under the
+          cursor. Tasks rarely all want the same budget, and this is the
+          moment you know what the next one needs. */}
+      {editing ? (
+        <div style={{ marginTop: "1.1rem", paddingTop: "1rem", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.5rem", fontFamily: "'DM Mono', monospace" }}>
+            <span style={{ fontSize: "0.5rem", letterSpacing: "0.15em", color: "rgba(255,255,255,0.35)" }}>NEXT TASK</span>
+            <span style={{ fontSize: "0.65rem", color }}>{fmtDuration(nextMinutes)}</span>
+          </div>
+          <input
+            type="range" min={min} max={max} step={step} value={nextMinutes}
+            onChange={(e) => onChangeNext(Number(e.target.value))}
+            style={{ width: "100%", accentColor: color, colorScheme: "dark" }}
+          />
+        </div>
+      ) : (
+        <button
+          onClick={() => setEditing(true)}
+          style={{
+            width: "100%", marginTop: "0.6rem", padding: "0.6rem 1rem",
+            border: "1px solid rgba(255,255,255,0.14)", borderRadius: 7,
+            background: "transparent", color: "rgba(255,255,255,0.45)",
+            fontFamily: "'DM Mono', monospace", fontSize: "0.6rem",
+            letterSpacing: "0.14em", cursor: "pointer",
+            transition: "color 0.2s, border-color 0.2s",
+          }}
+        >
+          EDIT TIME FOR NEXT TASK
+        </button>
+      )}
     </div>
   </div>,
   document.body
-);
+  );
+};
 
 // ── Settings drawer ───────────────────────────────────────────────────────────
 
@@ -288,10 +333,6 @@ const TaskCompleteOverlay = ({ color, minutes, onContinue }) => createPortal(
 // 5 min so short focus blocks paired with micro breaks are actually reachable.
 // Micro moves in half minutes — at that length 30 s is a meaningful difference.
 const DURATION_RANGES = { work: [5, 50, 1], micro: [0.5, 5, 0.5], short: [1, 15, 1], long: [1, 35, 1] };
-
-// Task budget bounds, [min, max, step] in minutes. Wide enough for a short
-// admin task at one end and a deep-work block at the other.
-const TASK_RANGE = [10, 120, 5];
 
 const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDurations, isPlaying, onPlayPause, onReset, microEnabled, toggleMicro, loopsUntilShort, setLoopsUntilShort, setsUntilLong, setSetsUntilLong, blocksPerSet, workCount, muted, toggleMuted, taskEnabled, toggleTaskTimer, taskDuration, setTaskDuration, taskElapsed, onResetTask, showNumbers, toggleShowNumbers }) => {
   const [open, setOpen] = useState(false);
@@ -521,6 +562,10 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
   const [taskShowNumbers, setTaskShowNumbers] = useState(() => config.taskShowNumbers ?? true);
   const [taskElapsed, setTaskElapsed] = useState(0);
   const [taskDone, setTaskDone] = useState(false);
+  // The budget that just finished, frozen at the moment it did — the
+  // overlay reports this, while taskDuration below is free to be edited
+  // there for the next task.
+  const [taskDoneMinutes, setTaskDoneMinutes] = useState(0);
   const taskEnabledRef = useRef(config.taskTimerEnabled ?? false);
   const mutedRef = useRef(config.muted ?? false);
   const toggleMuted = () => { setMuted(m => { const next = !m; mutedRef.current = next; return next; }); };
@@ -778,9 +823,10 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
     if (phaseIdRef.current !== "work") return;
     setIsPlaying(false); isPlayingRef.current = false;
     setTaskDone(true);
+    setTaskDoneMinutes(taskDuration);
     playDoneSound(mutedRef.current);
     sendNotification("Task time is up", `${fmtDuration(taskDuration)} of focus done — on to the next task`);
-  }, [taskElapsed, taskEnabled, taskDone, isPlaying, taskTotalSec]);
+  }, [taskElapsed, taskEnabled, taskDone, isPlaying, taskTotalSec, taskDuration]);
 
   // Hand the budget to App, which draws it into the mode-switcher pill. Sent
   // even while switched off so the pill keeps the last figures to animate the
@@ -873,7 +919,7 @@ export default function AlignedFlow({ config, setConfig, onTaskStatus }) {
 
       <SettingsDrawer phases={PHASES} phaseId={phaseId} setPhaseId={handlePhaseChange} phase={phase} durations={durations} setDurations={setDurations} isPlaying={isPlaying} onPlayPause={onPlayPause} onReset={onReset} microEnabled={microEnabled} toggleMicro={toggleMicro} loopsUntilShort={loopsUntilShort} setLoopsUntilShort={setLoopsUntilShort} setsUntilLong={setsUntilLong} setSetsUntilLong={setSetsUntilLong} blocksPerSet={blocksPerSet} workCount={workCount} muted={muted} toggleMuted={toggleMuted} taskEnabled={taskEnabled} toggleTaskTimer={toggleTaskTimer} taskDuration={taskDuration} setTaskDuration={setTaskDuration} taskElapsed={taskElapsed} onResetTask={onResetTask} showNumbers={taskShowNumbers} toggleShowNumbers={toggleShowNumbers} />
 
-      {taskDone && <TaskCompleteOverlay color={PHASES.work.color} minutes={taskDuration} onContinue={onTaskContinue} />}
+      {taskDone && <TaskCompleteOverlay color={PHASES.work.color} minutes={taskDoneMinutes} nextMinutes={taskDuration} onChangeNext={setTaskDuration} onContinue={onTaskContinue} />}
     </div>
   );
 }
