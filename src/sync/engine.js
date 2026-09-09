@@ -5,9 +5,8 @@
 import { getDocs, onSnapshot, setDoc, deleteDoc, writeBatch, serverTimestamp } from "firebase/firestore";
 import { getDb, presetsCol, presetDoc, stateDoc, COLLECTION } from "./firestore";
 
-// Identifies this browser in written documents. Only ever read by a human
-// looking at the console wondering which device wrote something — the echo
-// guard below uses Firestore's own metadata, not this.
+// Identifies this browser in written documents. The echo guard below reads
+// it to tell this device's own writes apart from another device's.
 const DEVICE_KEY = "alignedflow-device-id";
 export function deviceId() {
   let id = null;
@@ -121,12 +120,33 @@ export const pushSession = (key, session) =>
 
 // ── Listening ──
 //
-// Firestore reports our own writes back to us immediately, before the server
-// has them (latency compensation). Those echoes carry hasPendingWrites, and
-// acting on them would mean treating this device's own edit as a remote change
-// — remounting the running timer for a change it just made itself. Skipped.
-function isEcho(snapshot) {
-  return snapshot.metadata.hasPendingWrites;
+// Firestore reports this device's own writes back to it twice. First
+// immediately, before the server has them (latency compensation), flagged by
+// hasPendingWrites. Then again once the server resolves the serverTimestamp()
+// written with every document: that rewrites a field, so it arrives as a
+// genuine data change and no metadata flag marks it as ours.
+//
+// Acting on either means treating this device's own edit as a remote change —
+// adopting the cloud's copy of what was just typed here, and remounting the
+// running timer for it. Every document records the device that wrote it, so a
+// change that came from here is recognisable and skipped.
+//
+// Deletions are deliberately never skipped: a removed document's data is
+// whoever last *wrote* it, not who deleted it, so a preset edited here and
+// later deleted on another device would look like our own change and the
+// deletion would be lost.
+function isOwnWrite(snapshot) {
+  if (snapshot.metadata.hasPendingWrites) return true;
+  const changes = snapshot.docChanges();
+  if (!changes.length) return false;
+  const me = deviceId();
+  return changes.every(c => c.type !== "removed" && c.doc.data()?.updatedBy === me);
+}
+
+// The single-document state records carry the same stamp, and have no
+// deletion case to preserve.
+function isOwnDoc(snapshot) {
+  return snapshot.metadata.hasPendingWrites || snapshot.data()?.updatedBy === deviceId();
 }
 
 export function subscribe(key, handlers) {
@@ -134,19 +154,19 @@ export function subscribe(key, handlers) {
 
   for (const kind of Object.keys(COLLECTION)) {
     unsubs.push(onSnapshot(presetsCol(key, kind), (snap) => {
-      if (isEcho(snap)) return;
+      if (isOwnWrite(snap)) return;
       handlers.onPresets?.(kind, snap.docs.map(d => fromDoc(d.id, d.data())));
     }, handlers.onError));
   }
 
   unsubs.push(onSnapshot(stateDoc(key, "selection"), (snap) => {
-    if (isEcho(snap) || !snap.exists()) return;
+    if (!snap.exists() || isOwnDoc(snap)) return;
     const d = snap.data();
     handlers.onSelection?.({ work: d.work, evening: d.evening });
   }, handlers.onError));
 
   unsubs.push(onSnapshot(stateDoc(key, "session"), (snap) => {
-    if (isEcho(snap) || !snap.exists()) return;
+    if (!snap.exists() || isOwnDoc(snap)) return;
     const d = snap.data();
     handlers.onSession?.({ phaseId: d.phaseId, workCount: d.workCount });
   }, handlers.onError));
