@@ -26,7 +26,19 @@ export const syncConfigured = !!(
 const readKey = () => { try { return localStorage.getItem(KEY_STORAGE) || ""; } catch (e) { return ""; } };
 const writeKey = (k) => { try { k ? localStorage.setItem(KEY_STORAGE, k) : localStorage.removeItem(KEY_STORAGE); } catch (e) { /* unavailable */ } };
 
-const snapshotOf = (store) => Object.fromEntries(store.presets.map(p => [p.id, JSON.stringify(p)]));
+// Firestore stores the keys of a map field sorted, so a preset that has been
+// through the cloud comes back with its keys in a different order than the
+// one that was written — same content, different string. Comparing with a
+// plain JSON.stringify therefore saw a change on every round trip, which
+// counted this device's own edit as a remote one and remounted the running
+// mode for nothing. Serialising keys in a fixed order means only real
+// content differences register.
+const sortDeep = (v) => Array.isArray(v) ? v.map(sortDeep)
+  : (v && typeof v === "object") ? Object.fromEntries(Object.keys(v).sort().map(k => [k, sortDeep(v[k])]))
+  : v;
+const stableJson = (v) => JSON.stringify(sortDeep(v));
+
+const snapshotOf = (store) => Object.fromEntries(store.presets.map(p => [p.id, stableJson(p)]));
 
 export function useSync({ work, evening, setWork, setEvening, runtime, applyRemoteSession, onRemoteApplied }) {
   const [key, setKey] = useState(readKey);
@@ -74,7 +86,7 @@ export function useSync({ work, evening, setWork, setEvening, runtime, applyRemo
       savePresets(kind, next);
       return next;
     });
-    syncedRef.current[kind] = Object.fromEntries(presets.map(p => [p.id, JSON.stringify(p)]));
+    syncedRef.current[kind] = Object.fromEntries(presets.map(p => [p.id, stableJson(p)]));
     // The running mode mirrors its preset into once-only state, so a changed
     // active preset has to remount it — App keys the mode on this.
     if (activeChanged) onRemoteApplied?.(kind);
@@ -86,7 +98,7 @@ export function useSync({ work, evening, setWork, setEvening, runtime, applyRemo
     const incomingActive = presets.find(p => p.id === store.activeId);
     const currentActive = store.presets.find(p => p.id === store.activeId);
     const activeChanged = incomingActive && currentActive &&
-      JSON.stringify(incomingActive) !== JSON.stringify(currentActive);
+      stableJson(incomingActive) !== stableJson(currentActive);
 
     if (activeChanged && rt?.[kind]?.isPlaying) {
       heldRef.current[kind] = presets;
