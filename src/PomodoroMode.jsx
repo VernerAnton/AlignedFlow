@@ -438,6 +438,13 @@ const TaskCompleteOverlay = ({ color, minutes, nextMinutes, onChangeNext, onCont
 // Slider bounds per phase, as [min, max, step] in minutes. Work goes down to
 // 5 min so short focus blocks paired with micro breaks are actually reachable.
 // Micro moves in half minutes — at that length 30 s is a meaningful difference.
+// The order the phases are shown in: the shape of a cycle, not the order the
+// data happens to arrive in. Firestore stores a map field's keys sorted, so a
+// preset that has been through sync comes back reordered — deriving the
+// controls' order from the object itself reshuffled the pills and sliders
+// under you. Anything unrecognised keeps its own order, after these.
+const PHASE_ORDER = ["work", "micro", "short", "long"];
+
 const DURATION_RANGES = { work: [5, 50, 1], micro: [0.5, 5, 0.5], short: [1, 15, 1], long: [1, 35, 1] };
 
 // Whether the settings drawer is open, held at module scope so it outlives a
@@ -469,7 +476,11 @@ const SettingsDrawer = ({ phases, phaseId, setPhaseId, phase, durations, setDura
 
   // With micro breaks off the phase is inert — keep it out of the UI so the
   // default is an ordinary three-phase pomodoro.
-  const visiblePhases = Object.values(phases).filter((p) => p.id !== "micro" || microEnabled);
+  const orderedPhases = [
+    ...PHASE_ORDER.filter((id) => phases[id]),
+    ...Object.keys(phases).filter((id) => !PHASE_ORDER.includes(id)),
+  ].map((id) => phases[id]);
+  const visiblePhases = orderedPhases.filter((p) => p.id !== "micro" || microEnabled);
 
   return (
     <div style={{ position: "fixed", bottom: 0, left: `calc(50% + ${fillOffset / 2}px)`, transform: "translateX(-50%)", zIndex: 20, pointerEvents: open ? "auto" : "none" }}>
