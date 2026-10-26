@@ -47,6 +47,8 @@ anything half-typed into a builder.
   build served by `vite preview`; desktop Chrome plus a touch phone profile.
   These run on real time, so presets in them use durations of a few seconds.
   A new machine needs `npx playwright install chromium` once.
+- Both suites run in GitHub Actions on every PR and on pushes to `main`
+  (`.github/workflows/tests.yml`); a failed e2e run uploads its traces.
 - Tests live outside `src/` to keep it flat. The active evening card carries
   `aria-current="step"`, which is how tests find it.
 
