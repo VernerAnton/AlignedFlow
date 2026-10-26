@@ -697,6 +697,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
   // a double tap starts the card once instead of starting and pausing it.
   const beginCard = () => {
     if (phaseRef.current !== "ready" || isUnpicked(indexRef.current) || rewindingRef.current) return;
+    startedAtRef.current = Date.now();
     unlockAudio();
     reacquireWakeLock();
     if (resetAnimatingRef.current) {
@@ -714,7 +715,13 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
     setIsPlaying(true);
   };
 
+  // When the last start happened. The tap that starts a card lands where the
+  // button now reads PAUSE, so the second half of a double tap would undo it.
+  const startedAtRef = useRef(0);
+  const DOUBLE_TAP_MS = 500;
+
   const startRoutine = () => {
+    startedAtRef.current = Date.now();
     unlockAudio();
     reacquireWakeLock();
     setPhase("starting"); phaseRef.current = "starting";
@@ -744,6 +751,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
       startRoutine();
       return;
     }
+    if (isPlaying && Date.now() - startedAtRef.current < DOUBLE_TAP_MS) return;
     if (!isPlaying) { unlockAudio(); reacquireWakeLock(); }
     setIsPlaying((p) => !p);
   };
@@ -960,7 +968,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
           const isCued = isSwitching || isStarting || isCountingIn;
 
           return (
-            <div key={ci} ref={isCurrent ? cardRef : null} style={{
+            <div key={ci} ref={isCurrent ? cardRef : null} aria-current={isCurrent ? "step" : undefined} style={{
               position: "absolute", top: 0,
               left: isMobile ? 21 : 22,
               right: isMobile ? 14 : 22,
