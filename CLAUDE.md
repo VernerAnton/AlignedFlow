@@ -37,6 +37,21 @@ build announce itself through `UpdatePrompt` instead. **Never reload
 automatically**: a reload nobody asked for discards a running timer and
 anything half-typed into a builder.
 
+## Tests
+
+- `npm test` — Vitest unit and component tests in `tests/unit/` (jsdom, about
+  5s). Evening mode is driven through `tests/unit/helpers/evening.jsx`, which
+  swaps the timer worker for one the test ticks by hand, so a run lands on the
+  same second every time.
+- `npm run test:e2e` — Playwright specs in `tests/e2e/` against a production
+  build served by `vite preview`; desktop Chrome plus a touch phone profile.
+  These run on real time, so presets in them use durations of a few seconds.
+  A new machine needs `npx playwright install chromium` once.
+- Both suites run in GitHub Actions on every PR and on pushes to `main`
+  (`.github/workflows/tests.yml`); a failed e2e run uploads its traces.
+- Tests live outside `src/` to keep it flat. The active evening card carries
+  `aria-current="step"`, which is how tests find it.
+
 ## Conventions
 
 - Inline `style` objects, no CSS files. `'DM Mono', monospace` throughout.

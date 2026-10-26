@@ -63,6 +63,9 @@ export const DEFAULT_CONFIG = {
     ],
     switchBuffer: 8,
     transitionTime: 10,
+    // Hold each card until it is tapped, instead of counting the transition
+    // gap down on its own. Off keeps the routine hands-free.
+    tapToStart: false,
     muted: false,
   },
   pomodoro: {
@@ -178,19 +181,60 @@ export function migratePomodoro(p) {
   return p;
 }
 
-// The evening equivalent. Evening has never changed shape, so this only fills
-// gaps left by a hand-written or AI-written preset that omitted the settings.
+// The evening equivalent. Evening has only ever grown optional fields
+// (tapToStart, an exercise's options), so this just fills gaps left by an
+// older preset or a hand-written or AI-written one that omitted the settings.
 export function migrateEvening(e) {
   const d = DEFAULT_CONFIG.evening;
   if (!Array.isArray(e.sections)) e.sections = structuredClone(d.sections);
   if (!Array.isArray(e.exercises)) e.exercises = [];
   if (e.switchBuffer == null) e.switchBuffer = d.switchBuffer;
   if (e.transitionTime == null) e.transitionTime = d.transitionTime;
+  if (e.tapToStart == null) e.tapToStart = d.tapToStart;
+  // A choice card written by hand may leave its own duration and steps to its
+  // options. The card still needs both: it is what shows before anything is
+  // picked, and what a build without options support runs instead.
+  e.exercises = e.exercises.map(ex => {
+    if (!isChoiceCard(ex)) return ex;
+    const valid = (n) => typeof n === "number" && n > 0;
+    const duration = valid(ex.duration) ? ex.duration : ex.options.map(o => o?.duration).find(valid) ?? 60;
+    return { ...ex, duration, steps: Array.isArray(ex.steps) ? ex.steps : [] };
+  });
   if (e.muted == null) e.muted = d.muted;
   return e;
 }
 
 const MIGRATE = { work: migratePomodoro, evening: migrateEvening };
+
+// ── Choice cards ──
+//
+// An evening card with an options list is a pick-one: the card's title is the
+// heading, and each option is a move with its own steps and, if it sets them,
+// its own duration, bilateral flag and timing text — the card's apply
+// otherwise. Kept as a plain field on the exercise rather than a separate
+// kind, so a build that predates it still runs the card's own numbers.
+
+export function isChoiceCard(ex) {
+  return Array.isArray(ex?.options) && ex.options.length > 0;
+}
+
+// The one place an option is merged into its card. Everything that times a
+// card reads the result, so the rail, the fill and the switch-sides window
+// follow the picked move without each knowing about options.
+export function resolveExercise(ex, choiceIndex) {
+  if (!isChoiceCard(ex) || choiceIndex == null) return ex;
+  const opt = ex.options[choiceIndex];
+  if (!opt) return ex;
+  return {
+    ...ex,
+    title: opt.title,
+    steps: Array.isArray(opt.steps) ? opt.steps : [],
+    duration: typeof opt.duration === "number" && opt.duration > 0 ? opt.duration : ex.duration,
+    bilateral: opt.bilateral ?? ex.bilateral,
+    timing: opt.timing ?? ex.timing,
+    choiceTitle: ex.title,
+  };
+}
 
 // ── Presets ──
 //
@@ -484,6 +528,23 @@ function validateBody(kind, b) {
       if (!ex || typeof ex !== "object") return "An exercise is not an object";
       if (!ex.title) return `${where} has no title`;
       if (!ex.section) return `${where} has no section`;
+      if (ex.options != null) {
+        if (!Array.isArray(ex.options)) return `${where} has an options value that is not a list`;
+        // migrateEvening gives a card without a duration its first option's,
+        // so one timed option is enough for the rest to inherit from.
+        const timed = (n) => typeof n === "number" && n > 0;
+        const cardDuration = timed(ex.duration) || ex.options.some(o => timed(o?.duration));
+        for (const [i, opt] of ex.options.entries()) {
+          const at = `${where} option ${i + 1}`;
+          if (!opt || typeof opt !== "object") return `${at} is not an object`;
+          if (!opt.title) return `${at} has no title`;
+          if (!Array.isArray(opt.steps)) return `${at} has no steps list`;
+          const ownDuration = typeof opt.duration === "number" && opt.duration > 0;
+          if (opt.duration != null && !ownDuration) return `${at} has no valid duration (seconds)`;
+          if (!ownDuration && !cardDuration) return `${at} has no duration, and neither does its card`;
+        }
+        if (ex.options.length) continue;
+      }
       if (typeof ex.duration !== "number" || ex.duration <= 0) return `${where} has no valid duration (seconds)`;
       if (!Array.isArray(ex.steps)) return `${where} has no steps list`;
     }
@@ -587,7 +648,12 @@ export function presetSchemaText(kind) {
     : `// AlignedFlow evening preset. Paste a filled-in version of this into IMPORT.
 // duration is SECONDS, and for a bilateral exercise it covers BOTH sides.
 // Every exercise's "section" should match one of the section names above it.
-// Exercise ids are renumbered on import, so they need not be right.`;
+// Exercise ids are renumbered on import, so they need not be right.
+// tapToStart: true holds every card until it is tapped, instead of counting
+// down transitionTime between cards.
+// options (optional) makes a card a pick-one: the card waits until one option
+// is tapped. Each option has a title and steps, and may set its own duration,
+// bilateral and timing — the card's apply to any it leaves out.`;
   const example = kind === "work"
     ? { name: "Busy day", phases: d.phases, durations: d.durations, microEnabled: d.microEnabled,
         loopsUntilShort: d.loopsUntilShort, setsUntilLong: d.setsUntilLong,
@@ -597,7 +663,17 @@ export function presetSchemaText(kind) {
         shortBreakSummary: d.shortBreakSummary, shortBreakHeading: d.shortBreakHeading, shortBreakExercises: d.shortBreakExercises.slice(0, 1),
         longBreakSummary: d.longBreakSummary, longBreakHeading: d.longBreakHeading, longBreakExercises: d.longBreakExercises.slice(0, 1) }
     : { name: "Short evening", sections: d.sections, switchBuffer: d.switchBuffer, transitionTime: d.transitionTime,
-        exercises: d.exercises.slice(0, 2) };
+        tapToStart: d.tapToStart,
+        exercises: [...d.exercises.slice(0, 2), {
+          id: 3, section: "Floor", title: "Hip opener — pick one", timing: "90 sec per side", duration: 180, bilateral: true,
+          steps: [],
+          options: [
+            { title: "Lizard Pose", timing: "90 sec per side", duration: 180, bilateral: true,
+              steps: ["Low lunge with front foot outside the hand", "Sink hips toward the floor"] },
+            { title: "Reclined Hero", timing: "2 min", duration: 120, bilateral: false,
+              steps: ["Kneel, sit back between the heels", "Lower onto forearms or the floor, only as far as is comfortable"] },
+          ],
+        }] };
   return `${note}\n\n${JSON.stringify(example, null, 2)}`;
 }
 

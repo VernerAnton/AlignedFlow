@@ -1,7 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
-import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playExerciseStartSound, playDoneSound, playEndingTick } from "./sounds";
+import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playExerciseStartSound, playDoneSound, playEndingTick, unlockAudio } from "./sounds";
 import { sendNotification } from "./notifications";
-import { computeSectionColors } from "./dataStore";
+import { computeSectionColors, isChoiceCard, resolveExercise } from "./dataStore";
+import useWakeLock from "./useWakeLock";
 
 const SWITCH_RING_COUNT = 5;
 // Seconds before the end of the switch window where the soft pulse tone starts.
@@ -13,6 +14,10 @@ const TRANSITION_RING_COUNT = 3;
 // Seconds before an exercise ends where the warning tick starts — gives the
 // completion sound a runway instead of arriving as a single surprise beep.
 const EXERCISE_END_LEAD_COUNT = 8;
+// A card waiting for a tap stops holding the screen awake after this long, so
+// a phone left on the floor doesn't stay lit all night. The next tap takes the
+// lock back.
+const READY_WAKE_MS = 10 * 60 * 1000;
 
 function getEffectiveDuration(ex, switchBuffer) {
   return ex.bilateral ? ex.duration + switchBuffer : ex.duration;
@@ -146,7 +151,19 @@ function SwitchRings({ switchSecsLeft, color, cardRect, isMobile, railW }) {
   );
 }
 
-function ExerciseCard({ ex, color, sideLabel, totalCount }) {
+// `card` is the exercise as written; `ex` is it resolved against any pick.
+// They are the same object for an ordinary card.
+function ExerciseCard({ card, ex, color, sideLabel, totalCount, showOptions, picked, onPick }) {
+  const choice = isChoiceCard(card);
+  const optionCount = choice ? card.options.length : 0;
+  const isPicked = choice && picked != null && !!card.options[picked];
+  const listing = choice && (showOptions || !isPicked);
+
+  // A choice card shows its heading and the moves to pick from until one is
+  // running; after that it reads as that move, with the heading kept above it.
+  const title = listing ? card.title : ex.title;
+  const timing = listing ? `${optionCount} option${optionCount === 1 ? "" : "s"}` : ex.timing;
+
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "1.4rem 1.4rem 1.1rem", overflow: "hidden" }}>
       <div style={{ flexShrink: 0, marginBottom: "0.85rem" }}>
@@ -166,17 +183,55 @@ function ExerciseCard({ ex, color, sideLabel, totalCount }) {
             <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.2)", letterSpacing: "0.06em" }}>{String(ex.id).padStart(2, "0")} / {String(totalCount).padStart(2, "0")}</span>
           </div>
         </div>
-        <div style={{ fontSize: "1.1rem", color: "#f0ece4", fontFamily: "Georgia, serif", lineHeight: 1.25, marginBottom: "0.35rem" }}>{ex.title}</div>
-        <div style={{ fontSize: "0.63rem", fontFamily: "'DM Mono', monospace", color: `${color}bb`, letterSpacing: "0.05em" }}>{ex.timing}</div>
+        {choice && !listing && (
+          <div style={{ fontSize: "0.58rem", fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.32)", letterSpacing: "0.06em", marginBottom: "0.25rem" }}>
+            {card.title} · option {picked + 1} of {optionCount}
+          </div>
+        )}
+        <div style={{ fontSize: "1.1rem", color: "#f0ece4", fontFamily: "Georgia, serif", lineHeight: 1.25, marginBottom: "0.35rem" }}>{title}</div>
+        <div style={{ fontSize: "0.63rem", fontFamily: "'DM Mono', monospace", color: `${color}bb`, letterSpacing: "0.05em" }}>{timing}</div>
       </div>
       <div style={{ height: 1, background: "rgba(255,255,255,0.06)", marginBottom: "0.85rem", flexShrink: 0 }} />
       <div style={{ flex: 1, overflow: "auto" }}>
-        {ex.steps.map((step, i) => (
-          <div key={i} style={{ display: "flex", gap: "0.7rem", alignItems: "flex-start", marginBottom: "0.48rem" }}>
-            <div style={{ width: 8, height: 8, background: `${color}55`, transform: "rotate(45deg)", flexShrink: 0, marginTop: "0.37rem" }} />
-            <span style={{ fontSize: "0.83rem", color: "#ccc8be", lineHeight: 1.65 }}>{step}</span>
+        {listing ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+            {card.options.map((opt, i) => {
+              const r = resolveExercise(card, i);
+              const selected = isPicked && picked === i;
+              const meta = r.timing || `${r.duration}s`;
+              // Buttons only while they can be picked: the peeking cards show
+              // the same list, and must not take focus or swallow a tap.
+              const rowStyle = {
+                display: "flex", alignItems: "center", gap: "0.7rem", width: "100%", minHeight: 44,
+                padding: "0.6rem 0.75rem", textAlign: "left", borderRadius: 8,
+                border: `1px solid ${selected ? color + "aa" : color + "30"}`,
+                background: selected ? `${color}18` : "rgba(255,255,255,0.02)",
+                color: "#f0ece4", cursor: onPick ? "pointer" : "default",
+                touchAction: "manipulation",
+              };
+              const content = (
+                <>
+                  <span style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: `${color}99`, minWidth: 10 }}>{i + 1}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: "0.9rem", fontFamily: "Georgia, serif", lineHeight: 1.3 }}>{opt.title}</span>
+                    <span style={{ display: "block", fontSize: "0.58rem", fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.38)", letterSpacing: "0.05em", marginTop: "0.15rem" }}>{meta}</span>
+                  </span>
+                  {r.bilateral && <span style={{ fontSize: "0.5rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.08em", color, border: `1px solid ${color}44`, borderRadius: 3, padding: "0.08rem 0.3rem" }}>B</span>}
+                </>
+              );
+              return onPick
+                ? <button key={i} onClick={() => onPick(i)} style={rowStyle}>{content}</button>
+                : <div key={i} style={rowStyle}>{content}</div>;
+            })}
           </div>
-        ))}
+        ) : (
+          ex.steps.map((step, i) => (
+            <div key={i} style={{ display: "flex", gap: "0.7rem", alignItems: "flex-start", marginBottom: "0.48rem" }}>
+              <div style={{ width: 8, height: 8, background: `${color}55`, transform: "rotate(45deg)", flexShrink: 0, marginTop: "0.37rem" }} />
+              <span style={{ fontSize: "0.83rem", color: "#ccc8be", lineHeight: 1.65 }}>{step}</span>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
@@ -209,10 +264,38 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
 
   // Session state
   const [index, setIndex] = useState(0);
-  const [phase, setPhase] = useState("idle"); // idle | starting | exercise | transition | done
+  // ready = parked at the start of a card until it is tapped (tap-to-start, or
+  // a choice card waiting for a pick). isPlaying is false there, so nothing
+  // ticks, sounds or drains without needing its own guard.
+  const [phase, setPhase] = useState("idle"); // idle | starting | ready | exercise | transition | done
   const [startCountdown, setStartCountdown] = useState(null); // 5 → 0 → null
   const [timeLeft, setTimeLeft] = useState(getEffectiveDuration(exercises[0], switchBuffer));
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Which option each choice card was given this run, by exercise id. The ref
+  // is what handlers read, so a pick and the start it triggers can happen in
+  // the same tap without waiting for a render.
+  const [choices, setChoices] = useState({});
+  const choicesRef = useRef({});
+  const setChoice = (id, optIdx) => {
+    choicesRef.current = id == null ? {} : { ...choicesRef.current, [id]: optIdx };
+    setChoices(choicesRef.current);
+  };
+  // Every card as it will actually run. Timing reads these rather than the raw
+  // exercises, so a picked option's own duration and sides apply everywhere.
+  const resolved = useMemo(
+    () => exercises.map(ex => resolveExercise(ex, choices[ex.id])),
+    [exercises, choices]
+  );
+  const isUnpicked = (i) => isChoiceCard(exercises[i]) && choicesRef.current[exercises[i].id] == null;
+  const needsWait = (i) => !!config.tapToStart || isChoiceCard(exercises[i]);
+
+  // The transition gap is either the preset's get-into-position time or, after
+  // a tap, a short count-in. The count-in starts from a full card, so the fill
+  // stays full through it rather than draining and refilling.
+  const [gap, setGapState] = useState({ len: config.transitionTime, countIn: false });
+  const gapRef = useRef(gap);
+  const setGap = (g) => { gapRef.current = g; setGapState(g); };
 
   const [muted, setMuted] = useState(() => config.muted ?? false);
   const mutedRef = useRef(config.muted ?? false);
@@ -235,13 +318,32 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
 
   // Tells App whether a routine is under way here, so a preset edit arriving
   // from another device waits rather than restarting the run in progress.
+  // "Under way" rather than "ticking": a card waiting for its tap, or a pause
+  // mid-routine, is still a run that a remount would throw away. The key keeps
+  // its old name because sync reads it.
+  const underway = phase !== "idle" && phase !== "done";
   useEffect(() => {
-    onRuntime?.({ isPlaying });
-  }, [isPlaying, onRuntime]);
+    onRuntime?.({ isPlaying: underway });
+  }, [underway, onRuntime]);
+  // Leaving the mode unmounts it and ends the run, and nothing else would
+  // clear the flag — sync would otherwise hold changes back indefinitely.
+  useEffect(() => () => onRuntime?.({ isPlaying: false }), [onRuntime]);
+
+  // The screen stays on while the routine runs or a card is waiting for its
+  // tap — a phone that locks itself in between has to be unlocked to be tapped.
+  // A deliberate pause lets it sleep.
+  const [readyStale, setReadyStale] = useState(false);
+  useEffect(() => {
+    setReadyStale(false);
+    if (phase !== "ready") return;
+    const t = setTimeout(() => setReadyStale(true), READY_WAKE_MS);
+    return () => clearTimeout(t);
+  }, [phase, index]);
+  const reacquireWakeLock = useWakeLock(isPlaying || (phase === "ready" && !readyStale));
 
   // Bilateral sub-phase — derived from timeLeft for bilateral exercises
   // "side1" | "switching" | "side2" | null (for non-bilateral)
-  const curEx = exercises[index];
+  const curEx = resolved[index];
   const switchWindow = getSwitchWindow(curEx, switchBuffer);
   const subPhase = (() => {
     if (!curEx.bilateral || phase !== "exercise") return null;
@@ -259,7 +361,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
   // Get-into-position countdown — the final seconds of the transition gap.
   // Derived from the existing timeLeft tick, so no extra timer is needed.
   // Clamped in case an imported config has a transitionTime below the ring count.
-  const transitionRingCount = Math.min(TRANSITION_RING_COUNT, config.transitionTime);
+  const transitionRingCount = Math.min(TRANSITION_RING_COUNT, gap.len);
   const transitionCountdown = phase === "transition" && timeLeft > 0 && timeLeft <= transitionRingCount
     ? timeLeft
     : 0;
@@ -314,6 +416,11 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
 
   useEffect(() => { indexRef.current = index; }, [index]);
 
+  // A choice card changes height without changing index — the option list is
+  // swapped for the picked move's steps — so the pick and the list's
+  // visibility count as reasons to measure too.
+  const curPick = choices[exercises[index].id];
+  const showOptions = isChoiceCard(exercises[index]) && (phase === "idle" || phase === "ready");
   useLayoutEffect(() => {
     // Don't re-measure during switching — the overlay can cause sub-pixel reflow
     if (subPhase === "switching") return;
@@ -323,7 +430,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
       setCardRect({ top: r.top, left: r.left, width: r.width, height: r.height });
       cardRectRef.current = { top: r.top, left: r.left, width: r.width, height: r.height };
     }
-  }, [index]);
+  }, [index, curPick, showOptions]);
 
   // Update card rect on resize or animation settle
   useEffect(() => {
@@ -343,7 +450,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
       clearTimeout(t);
       if (interval) clearInterval(interval);
     };
-  }, [index, subPhase, phase]);
+  }, [index, subPhase, phase, curPick]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
 
@@ -386,8 +493,8 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
 
   // Compute what fillPct should be for a given timeLeft value
   const computeFill = (tl, ph, dur) => {
-    if (ph === "idle" || ph === "starting") return 100;
-    if (ph === "transition") return dur > 0 ? (1 - tl / dur) * 100 : 100;
+    if (ph === "idle" || ph === "starting" || ph === "ready") return 100;
+    if (ph === "transition") return gapRef.current.countIn ? 100 : dur > 0 ? (1 - tl / dur) * 100 : 100;
     return dur > 0 ? (tl / dur) * 100 : 0;
   };
 
@@ -457,7 +564,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
   useEffect(() => {
     if (phase !== "starting" || startCountdown !== 0) return;
     setPhase("exercise"); phaseRef.current = "exercise";
-    setTimeLeft(getEffectiveDuration(exercises[index], switchBuffer));
+    setTimeLeft(getEffectiveDuration(resolved[index], switchBuffer));
     setStartCountdown(null);
     playExerciseStartSound(mutedRef.current);
   }, [startCountdown, phase]);
@@ -477,7 +584,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
   // When timeLeft changes (new second tick), set up the next interpolation segment
   useEffect(() => {
     if (resetAnimatingRef.current) return;
-    const dur = phaseRef.current === "transition" ? config.transitionTime : getEffectiveDuration(exercises[indexRef.current], switchBuffer);
+    const dur = phaseRef.current === "transition" ? gapRef.current.len : getEffectiveDuration(resolved[indexRef.current], switchBuffer);
     const currentFill = computeFill(timeLeft, phaseRef.current, dur);
     const nextFill = computeFill(Math.max(0, timeLeft - 1), phaseRef.current, dur);
 
@@ -503,7 +610,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
       segmentFromRef.current = smoothFillPct;
       segmentToRef.current = smoothFillPct;
     } else {
-      const dur = phaseRef.current === "transition" ? config.transitionTime : getEffectiveDuration(exercises[indexRef.current], switchBuffer);
+      const dur = phaseRef.current === "transition" ? gapRef.current.len : getEffectiveDuration(resolved[indexRef.current], switchBuffer);
       const nextFill = computeFill(Math.max(0, timeLeft - 1), phaseRef.current, dur);
       segmentDurationRef.current = 1000;
       segmentStartRef.current = performance.now();
@@ -552,23 +659,100 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
       } else {
         slide("fwd");
         setIndex(next); indexRef.current = next;
-        setPhase("transition"); phaseRef.current = "transition";
-        setTimeLeft(config.transitionTime);
         playExerciseCompleteSound(mutedRef.current);
+        if (needsWait(next)) {
+          enterReady(next);
+          // Wake lock is dropped while hidden, so a phone that has wandered
+          // off to another app is the one that needs telling.
+          if (document.visibilityState === "hidden") sendNotification("Ready when you are", `Tap to start ${exercises[next].title}.`);
+        } else {
+          setGap({ len: config.transitionTime, countIn: false });
+          setPhase("transition"); phaseRef.current = "transition";
+          setTimeLeft(config.transitionTime);
+        }
       }
     } else if (phaseRef.current === "transition") {
       setPhase("exercise"); phaseRef.current = "exercise";
-      setTimeLeft(getEffectiveDuration(exercises[indexRef.current], switchBuffer));
+      setTimeLeft(getEffectiveDuration(resolved[indexRef.current], switchBuffer));
       playExerciseStartSound(mutedRef.current);
     }
   }, [timeLeft, isPlaying]);
 
+  // Park on card i until it is tapped. The waterline refills over the same
+  // short ease Reset uses, rather than jumping from empty to full.
+  const enterReady = (i) => {
+    setIsPlaying(false);
+    setPhase("ready"); phaseRef.current = "ready";
+    setTimeLeft(getEffectiveDuration(resolveExercise(exercises[i], choicesRef.current[exercises[i].id]), switchBuffer));
+    resetAnimatingRef.current = true;
+    segmentDurationRef.current = 600;
+    segmentStartRef.current = performance.now();
+    segmentFromRef.current = smoothFillPct;
+    segmentToRef.current = 100;
+  };
+
+  // The one way out of ready — a tap anywhere, Space, START, or picking an
+  // option. Runs inside the gesture, which is what iOS needs to wake audio
+  // after a screen lock and to grant the wake lock again. Gated on phaseRef so
+  // a double tap starts the card once instead of starting and pausing it.
+  const beginCard = () => {
+    if (phaseRef.current !== "ready" || isUnpicked(indexRef.current) || rewindingRef.current) return;
+    startedAtRef.current = Date.now();
+    unlockAudio();
+    reacquireWakeLock();
+    if (resetAnimatingRef.current) {
+      resetAnimatingRef.current = false;
+      segmentStartRef.current = null;
+      segmentFromRef.current = 100;
+      segmentToRef.current = 100;
+      setSmoothFillPct(100);
+    }
+    // The count-in is the ordinary transition gap, shortened — so its rings,
+    // ring tones, Get Ready overlay and start sound all come for free.
+    setGap({ len: TRANSITION_RING_COUNT, countIn: true });
+    setPhase("transition"); phaseRef.current = "transition";
+    setTimeLeft(TRANSITION_RING_COUNT);
+    setIsPlaying(true);
+  };
+
+  // When the last start happened. The tap that starts a card lands where the
+  // button now reads PAUSE, so the second half of a double tap would undo it.
+  const startedAtRef = useRef(0);
+  const DOUBLE_TAP_MS = 500;
+
+  const startRoutine = () => {
+    startedAtRef.current = Date.now();
+    unlockAudio();
+    reacquireWakeLock();
+    setPhase("starting"); phaseRef.current = "starting";
+    setStartCountdown(5);
+    setIsPlaying(true);
+  };
+
+  // Picking a move on a choice card. Before the routine has begun it is also
+  // the Play press; on a waiting card it is the tap.
+  const pickOption = (optIdx) => {
+    const ph = phaseRef.current;
+    if ((ph !== "idle" && ph !== "ready") || rewindingRef.current) return;
+    const card = exercises[indexRef.current];
+    if (!isChoiceCard(card) || !card.options[optIdx]) return;
+    setChoice(card.id, optIdx);
+    setTimeLeft(getEffectiveDuration(resolveExercise(card, optIdx), switchBuffer));
+    if (ph === "ready") beginCard();
+    else startRoutine();
+  };
+
   const onPlayPause = () => {
     if (phase === "done") return;
+    if (phase === "ready") { beginCard(); return; }
     if (!isPlaying && phase === "idle") {
-      setPhase("starting"); phaseRef.current = "starting";
-      setStartCountdown(5);
+      // Nothing to count down to until a move is picked.
+      if (isUnpicked(indexRef.current)) { reacquireWakeLock(); enterReady(indexRef.current); return; }
+      startRoutine();
+      return;
     }
+    if (isPlaying && Date.now() - startedAtRef.current < DOUBLE_TAP_MS) return;
+    if (!isPlaying) { unlockAudio(); reacquireWakeLock(); }
     setIsPlaying((p) => !p);
   };
 
@@ -576,6 +760,8 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
     setIsPlaying(false);
     setPhase("idle"); phaseRef.current = "idle";
     setStartCountdown(null);
+    setChoice(null);
+    setGap({ len: config.transitionTime, countIn: false });
 
     // If already at first card, just reset timer
     if (indexRef.current === 0) {
@@ -626,25 +812,60 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
     rewindIntervalRef.current = setInterval(step, REWIND_STEP);
   };
 
+  // Stepping to card t mid-routine parks on it if it would wait anyway, or if
+  // the routine was already parked — skipping a card shouldn't start the next.
+  const goTo = (t, dir) => {
+    const ph = phaseRef.current;
+    slide(dir); setIndex(t); indexRef.current = t;
+    if (ph !== "idle" && ph !== "done" && (ph === "ready" || needsWait(t))) { enterReady(t); return; }
+    if (isPlaying) { setPhase("exercise"); phaseRef.current = "exercise"; }
+    else { setPhase("idle"); phaseRef.current = "idle"; }
+    setTimeLeft(getEffectiveDuration(resolved[t], switchBuffer));
+  };
+
   const onNext = () => {
     if (index >= exercises.length - 1 || isAnimRef.current || rewindingRef.current) return;
-    const n = index + 1;
-    slide("fwd"); setIndex(n); indexRef.current = n;
-    if (isPlaying) { setPhase("exercise"); phaseRef.current = "exercise"; }
-    else setPhase("idle");
-    setTimeLeft(getEffectiveDuration(exercises[n], switchBuffer));
+    goTo(index + 1, "fwd");
   };
 
   const onPrev = () => {
     if (index <= 0 || isAnimRef.current || rewindingRef.current) return;
-    const p = index - 1;
-    slide("bwd"); setIndex(p); indexRef.current = p;
-    if (isPlaying) { setPhase("exercise"); phaseRef.current = "exercise"; }
-    else setPhase("idle");
-    setTimeLeft(getEffectiveDuration(exercises[p], switchBuffer));
+    goTo(index - 1, "bwd");
   };
 
-  const totalDuration = phase === "transition" ? config.transitionTime : getEffectiveDuration(exercises[index], switchBuffer);
+  // Tap anywhere to start a waiting card. A click rather than a pointerdown:
+  // the browser sends no click after a scroll or a drag, so reading a long
+  // step list never starts the timer. Controls and option rows are buttons
+  // and handle their own taps.
+  const onSurfaceClick = (e) => {
+    if (phaseRef.current !== "ready") return;
+    if (e.target.closest?.("button, input, select, textarea, a")) return;
+    beginCard();
+  };
+
+  // Space is the primary button, 1–9 pick an option. Ignored when focus is on
+  // a control: Space on a focused button already clicks it, and Firefox can't
+  // be stopped from doing so, so handling it here as well would start a card
+  // and pause it again in one press. Handlers go through a ref because the
+  // listener is attached once.
+  const keyRef = useRef(null);
+  keyRef.current = { onPlayPause, pickOption };
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target?.closest?.("button, input, select, textarea, a, [contenteditable]")) return;
+      if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        if (!e.repeat) keyRef.current.onPlayPause();
+      } else if (/^[1-9]$/.test(e.key) && !e.repeat) {
+        keyRef.current.pickOption(Number(e.key) - 1);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  const totalDuration = phase === "transition" ? gap.len : getEffectiveDuration(resolved[index], switchBuffer);
   // smoothFillPct is used for the waterline — continuous 60fps interpolation
   // Integer fillPct still needed for rail (which should snap to seconds)
   const fillPct = smoothFillPct;
@@ -654,10 +875,15 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
   const COLOR = sectionColors.color;
   const bgColor = phase === "transition" ? sectionColors.transDim : sectionColors.dim;
 
+  // A waiting choice card is started by its options, not the main button.
+  const unpicked = phase === "ready" && isChoiceCard(exercises[index]) && curPick == null;
+  const primaryLabel = isPlaying ? "PAUSE" : phase === "done" ? "DONE" : phase === "ready" ? (unpicked ? "CHOOSE" : "START") : "PLAY";
+  const primaryInert = phase === "done" || unpicked;
+
   const btnBase = { border: "1px solid rgba(255,255,255,0.18)", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" };
 
   return (
-    <div style={{ position: "relative", height: "100%", background: "#0f0e0c", overflow: "hidden", fontFamily: "Georgia, serif" }}>
+    <div onClick={onSurfaceClick} style={{ position: "relative", height: "100%", background: "#0f0e0c", overflow: "hidden", fontFamily: "Georgia, serif", touchAction: "manipulation", cursor: phase === "ready" && !unpicked ? "pointer" : undefined }}>
       <style dangerouslySetInnerHTML={{ __html: pulseKeyframes }} />
 
       {/* Fill background — drains as time passes (position driven by RAF, color transitions via CSS) */}
@@ -679,6 +905,15 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
           <div style={{ position: "fixed", top: cardRect.top - 36, left: "50%", transform: "translateX(-50%)", zIndex: 15, pointerEvents: "none" }}>
             <div style={{ fontSize: "0.58rem", letterSpacing: "0.15em", textTransform: "uppercase", fontFamily: "'DM Mono', monospace", color: `${COLOR}88`, padding: "0.25rem 0.75rem", border: `1px solid ${COLOR}28`, borderRadius: 20, background: "rgba(15,14,12,0.88)", whiteSpace: "nowrap" }}>
               Get into position — {timeLeft}s
+            </div>
+          </div>
+        )}
+
+        {/* Waiting pill — same slot, for a card parked until it is tapped */}
+        {phase === "ready" && cardRect && (
+          <div style={{ position: "fixed", top: cardRect.top - 36, left: "50%", transform: "translateX(-50%)", zIndex: 15, pointerEvents: "none" }}>
+            <div style={{ fontSize: "0.58rem", letterSpacing: "0.15em", textTransform: "uppercase", fontFamily: "'DM Mono', monospace", color: `${COLOR}cc`, padding: "0.25rem 0.75rem", border: `1px solid ${COLOR}44`, borderRadius: 20, background: "rgba(15,14,12,0.88)", whiteSpace: "nowrap" }}>
+              {unpicked ? "Choose a move" : "Tap to start"}{isMobile ? "" : unpicked ? " · 1–9" : " · space"}
             </div>
           </div>
         )}
@@ -733,7 +968,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
           const isCued = isSwitching || isStarting || isCountingIn;
 
           return (
-            <div key={ci} ref={isCurrent ? cardRef : null} style={{
+            <div key={ci} ref={isCurrent ? cardRef : null} aria-current={isCurrent ? "step" : undefined} style={{
               position: "absolute", top: 0,
               left: isMobile ? 21 : 22,
               right: isMobile ? 14 : 22,
@@ -775,10 +1010,14 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
                 filter: isCued ? "blur(1px)" : "none",
               }}>
                 <ExerciseCard
-                  ex={exercises[ci]}
+                  card={exercises[ci]}
+                  ex={resolved[ci]}
                   color={getColors(exercises[ci].section).color}
                   totalCount={exercises.length}
-                  sideLabel={isCurrent && exercises[ci].bilateral && phase === "exercise"
+                  showOptions={isCurrent && showOptions}
+                  picked={choices[exercises[ci].id]}
+                  onPick={isCurrent && showOptions ? pickOption : null}
+                  sideLabel={isCurrent && resolved[ci].bilateral && phase === "exercise"
                     ? (subPhase === "side1" ? "Side 1" : subPhase === "side2" ? "Side 2" : null)
                     : null
                   }
@@ -892,8 +1131,8 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
         <button onClick={onReset} style={{ ...btnBase, padding: "0.42rem 0.85rem", borderRadius: 6, background: "rgba(15,14,12,0.88)", backdropFilter: "blur(8px)", color: "rgba(255,255,255,0.45)", fontSize: "0.62rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em" }}>RESET</button>
 
         {/* Play / Pause — primary action, slightly more prominent */}
-        <button onClick={onPlayPause} disabled={phase === "done"} style={{ ...btnBase, padding: isMobile ? "0.48rem 1.2rem" : "0.52rem 1.6rem", borderRadius: 6, border: `1px solid ${phase === "done" ? "rgba(255,255,255,0.08)" : COLOR}`, background: phase === "done" ? "rgba(15,14,12,0.7)" : `${COLOR}28`, backdropFilter: "blur(8px)", color: phase === "done" ? "#2a2a2a" : COLOR, fontSize: "0.7rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.14em", fontWeight: 500, cursor: phase === "done" ? "default" : "pointer" }}>
-          {isPlaying ? "PAUSE" : phase === "done" ? "DONE" : "PLAY"}
+        <button onClick={onPlayPause} disabled={primaryInert} style={{ ...btnBase, padding: isMobile ? "0.48rem 1.2rem" : "0.52rem 1.6rem", borderRadius: 6, border: `1px solid ${phase === "done" ? "rgba(255,255,255,0.08)" : unpicked ? `${COLOR}44` : COLOR}`, background: phase === "done" ? "rgba(15,14,12,0.7)" : unpicked ? "rgba(15,14,12,0.88)" : `${COLOR}28`, backdropFilter: "blur(8px)", color: phase === "done" ? "#2a2a2a" : unpicked ? `${COLOR}88` : COLOR, fontSize: "0.7rem", fontFamily: "'DM Mono', monospace", letterSpacing: "0.14em", fontWeight: 500, cursor: primaryInert ? "default" : "pointer" }}>
+          {primaryLabel}
         </button>
 
         {/* → next */}
