@@ -7,9 +7,11 @@ function getAudioContext() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
-  // Resume if suspended (browser autoplay policy)
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
+  // Resume if not running — 'suspended' under the autoplay policy, and on iOS
+  // 'interrupted' after a screen lock or a call, which only a fresh gesture
+  // clears. Hence also called from the tap that starts an evening card.
+  if (audioCtx.state !== 'running' && audioCtx.state !== 'closed') {
+    audioCtx.resume().catch(() => {});
   }
   return audioCtx;
 }
