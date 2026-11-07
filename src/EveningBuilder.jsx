@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { computeSectionColors, getActivePreset, patchPreset, nextId, DEFAULT_CONFIG } from "./dataStore";
+import { computeSectionColors, getActivePreset, patchPreset, nextId, DEFAULT_CONFIG, isChoiceCard, resolveExercise } from "./dataStore";
 import PresetBar from "./PresetBar";
 import VersionStamp from "./VersionStamp";
 import SyncPanel from "./SyncPanel";
@@ -32,7 +32,7 @@ export default function EveningBuilder({ store, setStore, sync, onBack }) {
       sectionColors: "Reset section colors to defaults? (Names will be kept)",
       sectionsFull: "Reset ALL sections (names, colors, count) to defaults?",
       exercises: "Reset all exercises to defaults?",
-      settings: "Reset settings (switch-sides time, transition time) to defaults?",
+      settings: "Reset settings (switch-sides time, transition time, wait for tap) to defaults?",
       everything: "Reset ENTIRE evening config to defaults?",
     };
     if (!window.confirm(messages[scope])) return;
@@ -59,7 +59,7 @@ export default function EveningBuilder({ store, setStore, sync, onBack }) {
     } else if (scope === "exercises") {
       setEvening(prev => ({ ...prev, exercises: structuredClone(defaults.exercises) }));
     } else if (scope === "settings") {
-      setEvening(prev => ({ ...prev, switchBuffer: defaults.switchBuffer, transitionTime: defaults.transitionTime, muted: defaults.muted ?? false }));
+      setEvening(prev => ({ ...prev, switchBuffer: defaults.switchBuffer, transitionTime: defaults.transitionTime, tapToStart: defaults.tapToStart, muted: defaults.muted ?? false }));
     } else if (scope === "everything") {
       setEvening(structuredClone(defaults));
     }
@@ -132,51 +132,6 @@ export default function EveningBuilder({ store, setStore, sync, onBack }) {
     setEvening(prev => ({ ...prev, sections: prev.sections.filter((_, i) => i !== idx) }));
   };
 
-  const updateStep = (exId, stepIdx, value) => {
-    setEvening(prev => ({
-      ...prev,
-      exercises: prev.exercises.map(ex => {
-        if (ex.id !== exId) return ex;
-        const steps = [...ex.steps];
-        steps[stepIdx] = value;
-        return { ...ex, steps };
-      }),
-    }));
-  };
-
-  const addStep = (exId) => {
-    setEvening(prev => ({
-      ...prev,
-      exercises: prev.exercises.map(ex =>
-        ex.id === exId ? { ...ex, steps: [...ex.steps, "New step"] } : ex
-      ),
-    }));
-  };
-
-  const deleteStep = (exId, stepIdx) => {
-    setEvening(prev => ({
-      ...prev,
-      exercises: prev.exercises.map(ex => {
-        if (ex.id !== exId) return ex;
-        return { ...ex, steps: ex.steps.filter((_, i) => i !== stepIdx) };
-      }),
-    }));
-  };
-
-  const moveStep = (exId, stepIdx, dir) => {
-    setEvening(prev => ({
-      ...prev,
-      exercises: prev.exercises.map(ex => {
-        if (ex.id !== exId) return ex;
-        const to = stepIdx + dir;
-        if (to < 0 || to >= ex.steps.length) return ex;
-        const steps = [...ex.steps];
-        [steps[stepIdx], steps[to]] = [steps[to], steps[stepIdx]];
-        return { ...ex, steps };
-      }),
-    }));
-  };
-
   return (
     <div style={{ position: "relative", height: "100%", background: "#0f0e0c", overflow: "auto", fontFamily: FONT, color: "#f0ece4", WebkitOverflowScrolling: "touch" }}>
       {/* Header */}
@@ -244,14 +199,23 @@ export default function EveningBuilder({ store, setStore, sync, onBack }) {
               <span style={{ fontSize: "0.7rem", color: evening.sections[0]?.color || "#c4956a", minWidth: 24 }}>{evening.switchBuffer}s</span>
             </div>
           </div>
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <div style={{ fontSize: "0.58rem", letterSpacing: "0.12em", color: "#555", marginBottom: "0.3rem" }}>TRANSITION TIME</div>
+          {/* Only used when cards run on by themselves — with wait-for-tap
+              on, the tap replaces the gap with a short count-in. */}
+          <div style={{ flex: 1, minWidth: 180, opacity: evening.tapToStart ? 0.35 : 1, transition: "opacity 0.15s" }}>
+            <div style={{ fontSize: "0.58rem", letterSpacing: "0.12em", color: "#555", marginBottom: "0.3rem" }}>TRANSITION TIME{evening.tapToStart ? " — UNUSED WITH WAIT FOR TAP" : ""}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <input type="range" min={5} max={90} step={1} value={evening.transitionTime} onChange={e => setEvening(prev => ({ ...prev, transitionTime: Number(e.target.value) }))} style={{ flex: 1, accentColor: evening.sections[0]?.color || "#c4956a" }} />
               <span style={{ fontSize: "0.7rem", color: evening.sections[0]?.color || "#c4956a", minWidth: 24 }}>{evening.transitionTime}s</span>
             </div>
           </div>
         </div>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", cursor: "pointer", marginBottom: "1.2rem" }}>
+          <input type="checkbox" checked={!!evening.tapToStart} onChange={e => setEvening(prev => ({ ...prev, tapToStart: e.target.checked }))} style={{ accentColor: evening.sections[0]?.color || "#c4956a", marginTop: 2 }} />
+          <span>
+            <span style={{ display: "block", fontSize: "0.58rem", letterSpacing: "0.12em", color: "#999" }}>WAIT FOR TAP BEFORE EACH CARD</span>
+            <span style={{ display: "block", fontSize: "0.58rem", color: "#555", marginTop: "0.2rem", lineHeight: 1.5 }}>Each card holds until you tap the screen, then counts 3-2-1. Choice cards always wait.</span>
+          </span>
+        </label>
 
         {/* Card List */}
         <div style={{ fontSize: "0.58rem", letterSpacing: "0.12em", color: "#555", marginBottom: "0.5rem" }}>EXERCISES ({evening.exercises.length})</div>
@@ -265,8 +229,10 @@ export default function EveningBuilder({ store, setStore, sync, onBack }) {
                 <div onClick={() => setExpandedCard(isExpanded ? null : ex.id)} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.65rem", cursor: "pointer" }}>
                   <div style={{ width: 10, height: 10, borderRadius: 2, background: colors.color, flexShrink: 0 }} />
                   <span style={{ flex: 1, fontSize: "0.76rem", color: "#f0ece4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ex.title}</span>
-                  {ex.bilateral && <span style={{ fontSize: "0.52rem", letterSpacing: "0.08em", color: colors.color, border: `1px solid ${colors.color}44`, borderRadius: 3, padding: "0.08rem 0.3rem" }}>B</span>}
-                  <span style={{ fontSize: "0.6rem", color: "#555", whiteSpace: "nowrap" }}>{ex.duration}s</span>
+                  {isChoiceCard(ex)
+                    ? <span style={{ fontSize: "0.52rem", letterSpacing: "0.08em", color: colors.color, border: `1px solid ${colors.color}44`, borderRadius: 3, padding: "0.08rem 0.3rem" }}>{ex.options.length}×</span>
+                    : ex.bilateral && <span style={{ fontSize: "0.52rem", letterSpacing: "0.08em", color: colors.color, border: `1px solid ${colors.color}44`, borderRadius: 3, padding: "0.08rem 0.3rem" }}>B</span>}
+                  <span style={{ fontSize: "0.6rem", color: "#555", whiteSpace: "nowrap" }}>{durationLabel(ex)}</span>
                   <div style={{ display: "flex", gap: 4 }}>
                     <button onClick={e => { e.stopPropagation(); moveExercise(i, -1); }} disabled={i === 0} style={{ ...btnSmall, padding: "0.35rem 0.5rem", fontSize: "0.85rem", opacity: i === 0 ? 0.2 : 1 }}>↑</button>
                     <button onClick={e => { e.stopPropagation(); moveExercise(i, 1); }} disabled={i === evening.exercises.length - 1} style={{ ...btnSmall, padding: "0.35rem 0.5rem", fontSize: "0.85rem", opacity: i === evening.exercises.length - 1 ? 0.2 : 1 }}>↓</button>
@@ -281,10 +247,6 @@ export default function EveningBuilder({ store, setStore, sync, onBack }) {
                     sections={evening.sections}
                     onUpdate={patch => updateExercise(ex.id, patch)}
                     onDelete={() => deleteExercise(ex.id)}
-                    onUpdateStep={(si, val) => updateStep(ex.id, si, val)}
-                    onAddStep={() => addStep(ex.id)}
-                    onDeleteStep={si => deleteStep(ex.id, si)}
-                    onMoveStep={(si, dir) => moveStep(ex.id, si, dir)}
                   />
                 )}
               </div>
@@ -302,53 +264,180 @@ export default function EveningBuilder({ store, setStore, sync, onBack }) {
   );
 }
 
-function CardEditor({ ex, sections, onUpdate, onDelete, onUpdateStep, onAddStep, onDeleteStep, onMoveStep }) {
+// A choice card's duration is its options' — a range when they differ.
+function durationLabel(ex) {
+  if (!isChoiceCard(ex)) return `${ex.duration}s`;
+  const ds = ex.options.map((_, i) => resolveExercise(ex, i).duration);
+  const lo = Math.min(...ds), hi = Math.max(...ds);
+  return lo === hi ? `${lo}s` : `${lo}–${hi}s`;
+}
+
+function CardEditor({ ex, sections, onUpdate, onDelete }) {
   const scrollRef = useRef(null);
+  const choice = isChoiceCard(ex);
+  const [openOption, setOpenOption] = useState(0);
+
+  // The card's own duration follows its first option. Only the timer here
+  // reads the options; a device still on an older build runs the card's own
+  // numbers, so they should at least be one of the real moves'.
+  const setOptions = (options) => onUpdate({ options, duration: resolveExercise({ ...ex, options }, 0).duration });
+
+  const toggleChoice = (on) => {
+    if (on) {
+      const base = { duration: ex.duration, bilateral: !!ex.bilateral, timing: ex.timing || "" };
+      onUpdate({ options: [
+        { ...base, title: ex.title, steps: [...ex.steps] },
+        { ...base, title: "Option 2", steps: ["Step 1"] },
+      ] });
+      setOpenOption(1);
+      return;
+    }
+    if (!window.confirm("Turn this back into a single exercise? Only option 1 is kept.")) return;
+    const first = resolveExercise(ex, 0);
+    onUpdate({ options: undefined, title: first.title, steps: first.steps, duration: first.duration, bilateral: !!first.bilateral, timing: first.timing || "" });
+  };
+
+  const updateOption = (i, patch) => setOptions(ex.options.map((o, oi) => oi === i ? { ...o, ...patch } : o));
+  const moveOption = (i, dir) => {
+    const to = i + dir;
+    if (to < 0 || to >= ex.options.length) return;
+    const next = [...ex.options];
+    [next[i], next[to]] = [next[to], next[i]];
+    setOptions(next);
+    if (openOption === i) setOpenOption(to);
+  };
+  const deleteOption = (i) => {
+    if (ex.options.length <= 1) return;
+    setOptions(ex.options.filter((_, oi) => oi !== i));
+    if (openOption === i) setOpenOption(null);
+  };
+  const addOption = () => {
+    const last = resolveExercise(ex, ex.options.length - 1);
+    setOptions([...ex.options, { title: `Option ${ex.options.length + 1}`, steps: ["Step 1"], duration: last.duration, bilateral: !!last.bilateral, timing: last.timing || "" }]);
+    setOpenOption(ex.options.length);
+  };
 
   return (
     <div ref={scrollRef} style={{ padding: "0.5rem 0.65rem 0.75rem", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
       <div>
-        <label style={labelStyle}>Title</label>
+        <label style={labelStyle}>{choice ? "Heading" : "Title"}</label>
         <input value={ex.title} onChange={e => onUpdate({ title: e.target.value })} style={inputStyle} />
       </div>
-      <div style={{ display: "flex", gap: "0.5rem" }}>
-        <div style={{ flex: 1 }}>
-          <label style={labelStyle}>Duration (sec)</label>
-          <DurationInput value={ex.duration} onChange={val => onUpdate({ duration: val })} />
+      {!choice && (
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Duration (sec)</label>
+            <DurationInput value={ex.duration} onChange={val => onUpdate({ duration: val })} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Timing text</label>
+            <input value={ex.timing || ""} onChange={e => onUpdate({ timing: e.target.value })} style={inputStyle} />
+          </div>
         </div>
-        <div style={{ flex: 1 }}>
-          <label style={labelStyle}>Timing text</label>
-          <input value={ex.timing || ""} onChange={e => onUpdate({ timing: e.target.value })} style={inputStyle} />
-        </div>
-      </div>
+      )}
       <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>Section</label>
           <SectionPicker value={ex.section} sections={sections} onChange={val => onUpdate({ section: val })} />
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", padding: "0.4rem 0" }}>
-          <input type="checkbox" checked={!!ex.bilateral} onChange={e => onUpdate({ bilateral: e.target.checked })} />
-          <span style={{ fontSize: "0.68rem", color: "#999" }}>Bilateral</span>
-        </label>
+        {!choice && (
+          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", padding: "0.4rem 0" }}>
+            <input type="checkbox" checked={!!ex.bilateral} onChange={e => onUpdate({ bilateral: e.target.checked })} />
+            <span style={{ fontSize: "0.68rem", color: "#999" }}>Bilateral</span>
+          </label>
+        )}
       </div>
+      <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}>
+        <input type="checkbox" checked={choice} onChange={e => toggleChoice(e.target.checked)} />
+        <span style={{ fontSize: "0.68rem", color: "#999" }}>Choice card — pick one move when it comes up</span>
+      </label>
 
-      {/* Steps */}
-      <div>
-        <label style={labelStyle}>Steps</label>
-        {ex.steps.map((step, si) => (
-          <div key={si} style={{ display: "flex", gap: "0.3rem", alignItems: "center", marginBottom: "0.3rem" }}>
-            <span style={{ fontSize: "0.6rem", color: "#444", minWidth: 16, textAlign: "right" }}>{si + 1}</span>
-            <input value={step} onChange={e => onUpdateStep(si, e.target.value)} onFocus={e => e.target.scrollIntoView({ behavior: "smooth", block: "nearest" })} style={{ ...inputStyle, flex: 1 }} />
-            <button onClick={() => onMoveStep(si, -1)} disabled={si === 0} style={{ ...btnSmall, padding: "0.3rem 0.4rem", fontSize: "0.75rem", opacity: si === 0 ? 0.2 : 1 }}>↑</button>
-            <button onClick={() => onMoveStep(si, 1)} disabled={si === ex.steps.length - 1} style={{ ...btnSmall, padding: "0.3rem 0.4rem", fontSize: "0.75rem", opacity: si === ex.steps.length - 1 ? 0.2 : 1 }}>↓</button>
-            <button onClick={() => onDeleteStep(si)} style={{ ...btnDanger, padding: "0.3rem 0.4rem", fontSize: "0.75rem" }}>✕</button>
+      {choice ? (
+        <div>
+          <label style={labelStyle}>Options</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+            {ex.options.map((opt, i) => {
+              const r = resolveExercise(ex, i);
+              const open = openOption === i;
+              return (
+                <div key={i} style={{ border: `1px solid ${open ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.07)"}`, borderRadius: 6 }}>
+                  <div onClick={() => setOpenOption(open ? null : i)} style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.4rem 0.5rem", cursor: "pointer" }}>
+                    <span style={{ fontSize: "0.6rem", color: "#444", minWidth: 12, textAlign: "right" }}>{i + 1}</span>
+                    <span style={{ flex: 1, fontSize: "0.72rem", color: "#f0ece4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{opt.title}</span>
+                    {r.bilateral && <span style={{ fontSize: "0.52rem", color: "#999", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 3, padding: "0.05rem 0.25rem" }}>B</span>}
+                    <span style={{ fontSize: "0.6rem", color: "#555" }}>{r.duration}s</span>
+                    <button onClick={e => { e.stopPropagation(); moveOption(i, -1); }} disabled={i === 0} style={{ ...btnSmall, padding: "0.3rem 0.4rem", fontSize: "0.75rem", opacity: i === 0 ? 0.2 : 1 }}>↑</button>
+                    <button onClick={e => { e.stopPropagation(); moveOption(i, 1); }} disabled={i === ex.options.length - 1} style={{ ...btnSmall, padding: "0.3rem 0.4rem", fontSize: "0.75rem", opacity: i === ex.options.length - 1 ? 0.2 : 1 }}>↓</button>
+                    <button onClick={e => { e.stopPropagation(); deleteOption(i); }} disabled={ex.options.length <= 1} title={ex.options.length <= 1 ? "A choice card needs at least one option" : "Delete option"} style={{ ...btnDanger, padding: "0.3rem 0.4rem", fontSize: "0.75rem", opacity: ex.options.length <= 1 ? 0.3 : 1 }}>✕</button>
+                  </div>
+                  {open && (
+                    <div style={{ padding: "0.2rem 0.5rem 0.55rem", display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+                      <div>
+                        <label style={labelStyle}>Title</label>
+                        <input value={opt.title} onChange={e => updateOption(i, { title: e.target.value })} style={inputStyle} />
+                      </div>
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={labelStyle}>Duration (sec)</label>
+                          <DurationInput value={r.duration} onChange={val => updateOption(i, { duration: val })} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={labelStyle}>Timing text</label>
+                          <input value={r.timing || ""} onChange={e => updateOption(i, { timing: e.target.value })} style={inputStyle} />
+                        </div>
+                      </div>
+                      <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}>
+                        <input type="checkbox" checked={!!r.bilateral} onChange={e => updateOption(i, { bilateral: e.target.checked })} />
+                        <span style={{ fontSize: "0.68rem", color: "#999" }}>Bilateral</span>
+                      </label>
+                      <div>
+                        <label style={labelStyle}>Steps</label>
+                        <StepList steps={r.steps} onChange={steps => updateOption(i, { steps })} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ))}
-        <button onClick={onAddStep} style={{ ...btnSmall, marginTop: "0.15rem" }}>+ STEP</button>
-      </div>
+          <button onClick={addOption} style={{ ...btnSmall, marginTop: "0.4rem" }}>+ OPTION</button>
+        </div>
+      ) : (
+        <div>
+          <label style={labelStyle}>Steps</label>
+          <StepList steps={ex.steps} onChange={steps => onUpdate({ steps })} />
+        </div>
+      )}
 
       <button onClick={onDelete} style={{ ...btnDanger, alignSelf: "flex-start", marginTop: "0.3rem" }}>DELETE EXERCISE</button>
     </div>
+  );
+}
+
+// Shared by a plain card and each option of a choice card.
+function StepList({ steps, onChange }) {
+  const update = (i, value) => onChange(steps.map((st, si) => si === i ? value : st));
+  const remove = (i) => onChange(steps.filter((_, si) => si !== i));
+  const move = (i, dir) => {
+    const to = i + dir;
+    if (to < 0 || to >= steps.length) return;
+    const next = [...steps];
+    [next[i], next[to]] = [next[to], next[i]];
+    onChange(next);
+  };
+  return (
+    <>
+      {steps.map((step, si) => (
+        <div key={si} style={{ display: "flex", gap: "0.3rem", alignItems: "center", marginBottom: "0.3rem" }}>
+          <span style={{ fontSize: "0.6rem", color: "#444", minWidth: 16, textAlign: "right" }}>{si + 1}</span>
+          <input value={step} onChange={e => update(si, e.target.value)} onFocus={e => e.target.scrollIntoView({ behavior: "smooth", block: "nearest" })} style={{ ...inputStyle, flex: 1 }} />
+          <button onClick={() => move(si, -1)} disabled={si === 0} style={{ ...btnSmall, padding: "0.3rem 0.4rem", fontSize: "0.75rem", opacity: si === 0 ? 0.2 : 1 }}>↑</button>
+          <button onClick={() => move(si, 1)} disabled={si === steps.length - 1} style={{ ...btnSmall, padding: "0.3rem 0.4rem", fontSize: "0.75rem", opacity: si === steps.length - 1 ? 0.2 : 1 }}>↓</button>
+          <button onClick={() => remove(si)} style={{ ...btnDanger, padding: "0.3rem 0.4rem", fontSize: "0.75rem" }}>✕</button>
+        </div>
+      ))}
+      <button onClick={() => onChange([...steps, "New step"])} style={{ ...btnSmall, marginTop: "0.15rem" }}>+ STEP</button>
+    </>
   );
 }
 
