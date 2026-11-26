@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { computeSectionColors, getActivePreset, patchPreset, nextId, DEFAULT_CONFIG, isChoiceCard, resolveExercise } from "./dataStore";
+import { computeSectionColors, getActivePreset, patchPreset, nextId, DEFAULT_CONFIG, isChoiceCard, resolveExercise, isVariableCard, variableMax, VARIABLE_MIN, VARIABLE_MAX } from "./dataStore";
 import PresetBar from "./PresetBar";
 import VersionStamp from "./VersionStamp";
 import SyncPanel from "./SyncPanel";
@@ -232,6 +232,7 @@ export default function EveningBuilder({ store, setStore, sync, onBack }) {
                   {isChoiceCard(ex)
                     ? <span style={{ fontSize: "0.52rem", letterSpacing: "0.08em", color: colors.color, border: `1px solid ${colors.color}44`, borderRadius: 3, padding: "0.08rem 0.3rem" }}>{ex.options.length}×</span>
                     : ex.bilateral && <span style={{ fontSize: "0.52rem", letterSpacing: "0.08em", color: colors.color, border: `1px solid ${colors.color}44`, borderRadius: 3, padding: "0.08rem 0.3rem" }}>B</span>}
+                  {isVariableCard(ex) && <span style={{ fontSize: "0.52rem", letterSpacing: "0.08em", color: colors.color, border: `1px solid ${colors.color}44`, borderRadius: 3, padding: "0.08rem 0.3rem" }}>VAR</span>}
                   <span style={{ fontSize: "0.6rem", color: "#555", whiteSpace: "nowrap" }}>{durationLabel(ex)}</span>
                   <div style={{ display: "flex", gap: 4 }}>
                     <button onClick={e => { e.stopPropagation(); moveExercise(i, -1); }} disabled={i === 0} style={{ ...btnSmall, padding: "0.35rem 0.5rem", fontSize: "0.85rem", opacity: i === 0 ? 0.2 : 1 }}>↑</button>
@@ -264,8 +265,10 @@ export default function EveningBuilder({ store, setStore, sync, onBack }) {
   );
 }
 
-// A choice card's duration is its options' — a range when they differ.
+// A choice card's duration is its options' — a range when they differ. A
+// variable card's is its default and how far it can go.
 function durationLabel(ex) {
+  if (isVariableCard(ex)) return `${minutes(ex.duration)}m · up to ${minutes(variableMax(ex))}m`;
   if (!isChoiceCard(ex)) return `${ex.duration}s`;
   const ds = ex.options.map((_, i) => resolveExercise(ex, i).duration);
   const lo = Math.min(...ds), hi = Math.max(...ds);
@@ -275,7 +278,22 @@ function durationLabel(ex) {
 function CardEditor({ ex, sections, onUpdate, onDelete }) {
   const scrollRef = useRef(null);
   const choice = isChoiceCard(ex);
+  const variable = isVariableCard(ex);
   const [openOption, setOpenOption] = useState(0);
+
+  // Both in whole minutes here, which is what the picker on the card steps
+  // in. The default can't sit above the maximum, so lowering the maximum
+  // pulls the default down with it.
+  const toggleVariable = (on) => {
+    if (on) {
+      const maxDuration = VARIABLE_MAX;
+      onUpdate({ variableLength: true, maxDuration, duration: Math.min(maxDuration, Math.max(VARIABLE_MIN, ex.duration)) });
+    } else {
+      onUpdate({ variableLength: undefined, maxDuration: undefined });
+    }
+  };
+  const setDefaultMinutes = (m) => onUpdate({ duration: Math.min(variableMax(ex), m * 60) });
+  const setMaxMinutes = (m) => onUpdate({ maxDuration: m * 60, duration: Math.min(ex.duration, m * 60) });
 
   // The card's own duration follows its first option. Only the timer here
   // reads the options; a device still on an older build runs the card's own
@@ -323,7 +341,19 @@ function CardEditor({ ex, sections, onUpdate, onDelete }) {
         <label style={labelStyle}>{choice ? "Heading" : "Title"}</label>
         <input value={ex.title} onChange={e => onUpdate({ title: e.target.value })} style={inputStyle} />
       </div>
-      {!choice && (
+      {variable && (
+        <div style={{ display: "flex", gap: "0.8rem" }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Default length — {minutes(ex.duration)} min</label>
+            <input type="range" aria-label="Default length in minutes" min={1} max={minutes(variableMax(ex))} step={1} value={minutes(ex.duration)} onChange={e => setDefaultMinutes(Number(e.target.value))} style={{ width: "100%", accentColor: "#c4956a" }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Max length — {minutes(variableMax(ex))} min</label>
+            <input type="range" aria-label="Max length in minutes" min={1} max={VARIABLE_MAX / 60} step={1} value={minutes(variableMax(ex))} onChange={e => setMaxMinutes(Number(e.target.value))} style={{ width: "100%", accentColor: "#c4956a" }} />
+          </div>
+        </div>
+      )}
+      {!choice && !variable && (
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>Duration (sec)</label>
@@ -347,10 +377,20 @@ function CardEditor({ ex, sections, onUpdate, onDelete }) {
           </label>
         )}
       </div>
-      <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}>
-        <input type="checkbox" checked={choice} onChange={e => toggleChoice(e.target.checked)} />
-        <span style={{ fontSize: "0.68rem", color: "#999" }}>Choice card — pick one move when it comes up</span>
-      </label>
+      {/* One question per card when it comes up: a choice card can't also be
+          variable length, so each checkbox only shows while the other is off. */}
+      {!variable && (
+        <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}>
+          <input type="checkbox" checked={choice} onChange={e => toggleChoice(e.target.checked)} />
+          <span style={{ fontSize: "0.68rem", color: "#999" }}>Choice card — pick one move when it comes up</span>
+        </label>
+      )}
+      {!choice && (
+        <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}>
+          <input type="checkbox" checked={variable} onChange={e => toggleVariable(e.target.checked)} />
+          <span style={{ fontSize: "0.68rem", color: "#999" }}>Variable length — choose how long when it comes up</span>
+        </label>
+      )}
 
       {choice ? (
         <div>
@@ -491,5 +531,9 @@ function DurationInput({ value, onChange }) {
     />
   );
 }
+
+// Whole minutes for the variable-length sliders; a default imported as 90s
+// shows as 2 and becomes 120s only if the slider is moved.
+const minutes = (secs) => Math.max(1, Math.round(secs / 60));
 
 const labelStyle = { display: "block", fontSize: "0.55rem", letterSpacing: "0.1em", color: "#555", marginBottom: "0.2rem", textTransform: "uppercase" };

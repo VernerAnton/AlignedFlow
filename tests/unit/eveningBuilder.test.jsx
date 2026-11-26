@@ -197,3 +197,71 @@ describe('ordinary cards after the step-list refactor', () => {
     expect(savedCard(2).options).toBeUndefined()
   })
 })
+
+describe('variable-length cards', () => {
+  const variableToggle = () => screen.getByText(/Variable length — choose how long/)
+  const slider = (name) => screen.getByRole('slider', { name })
+  const breathing = { id: 3, section: 'Floor', title: 'Breathing', timing: '10 min', duration: 600, steps: ['in', 'out'] }
+
+  it('turning it on keeps the duration as the default, with a 30-minute maximum', () => {
+    renderBuilder({ exercises: [lizard, plain, breathing] })
+    open('Breathing')
+    fireEvent.click(variableToggle())
+    expect(savedCard(3)).toMatchObject({ variableLength: true, maxDuration: 1800, duration: 600 })
+  })
+
+  it('turning it on lifts a default under a minute to one', () => {
+    renderBuilder({ exercises: [lizard, { ...plain, duration: 20 }] })
+    open('Plain')
+    fireEvent.click(variableToggle())
+    expect(savedCard(2).duration).toBe(60)
+  })
+
+  it('swaps the seconds and timing fields for default and max sliders in minutes', () => {
+    renderBuilder({ exercises: [lizard, plain, { ...breathing, variableLength: true, maxDuration: 1800 }] })
+    open('Breathing')
+    expect(screen.queryByText('Duration (sec)')).toBeNull()
+    expect(screen.queryByText('Timing text')).toBeNull()
+    expect(screen.getByText('Default length — 10 min')).toBeTruthy()
+    expect(screen.getByText('Max length — 30 min')).toBeTruthy()
+  })
+
+  it('sets the default and the maximum in whole minutes', () => {
+    renderBuilder({ exercises: [lizard, plain, { ...breathing, variableLength: true, maxDuration: 1800 }] })
+    open('Breathing')
+    fireEvent.change(slider('Default length in minutes'), { target: { value: '12' } })
+    fireEvent.change(slider('Max length in minutes'), { target: { value: '20' } })
+    expect(savedCard(3)).toMatchObject({ duration: 720, maxDuration: 1200 })
+  })
+
+  it('lowering the maximum below the default pulls the default down', () => {
+    renderBuilder({ exercises: [lizard, plain, { ...breathing, variableLength: true, maxDuration: 1800 }] })
+    open('Breathing')
+    fireEvent.change(slider('Max length in minutes'), { target: { value: '5' } })
+    expect(savedCard(3)).toMatchObject({ duration: 300, maxDuration: 300 })
+  })
+
+  it('shows VAR and the range on the collapsed row', () => {
+    renderBuilder({ exercises: [lizard, plain, { ...breathing, variableLength: true, maxDuration: 1200 }] })
+    expect(screen.getByText('VAR')).toBeTruthy()
+    expect(screen.getByText('10m · up to 20m')).toBeTruthy()
+  })
+
+  it('turning it off removes the flag and the maximum, keeping the default', () => {
+    renderBuilder({ exercises: [lizard, plain, { ...breathing, variableLength: true, maxDuration: 1200 }] })
+    open('Breathing')
+    fireEvent.click(variableToggle())
+    const card = savedCard(3)
+    expect(card.variableLength).toBeUndefined()
+    expect(card.maxDuration).toBeUndefined()
+    expect(card.duration).toBe(600)
+  })
+
+  it('is not offered on a choice card, and a variable card is not offered as a choice card', () => {
+    renderBuilder({ exercises: [{ ...lizard, options: [{ title: 'A', duration: 60, steps: [] }] }, { ...plain, variableLength: true, maxDuration: 1800 }] })
+    open('Lizard')
+    expect(screen.queryByText(/Variable length — choose how long/)).toBeNull()
+    open('Plain')
+    expect(screen.queryByText(/Choice card — pick one move/)).toBeNull()
+  })
+})
