@@ -195,6 +195,15 @@ export function migrateEvening(e) {
   // options. The card still needs both: it is what shows before anything is
   // picked, and what a build without options support runs instead.
   e.exercises = e.exercises.map(ex => {
+    if (ex?.variableLength && isChoiceCard(ex)) {
+      const { variableLength, maxDuration, ...rest } = ex;
+      ex = rest;
+    }
+    if (isVariableCard(ex)) {
+      const maxDuration = variableMax(ex);
+      const duration = Math.min(maxDuration, Math.max(VARIABLE_MIN, typeof ex.duration === "number" ? ex.duration : 600));
+      return { ...ex, maxDuration, duration };
+    }
     if (!isChoiceCard(ex)) return ex;
     const valid = (n) => typeof n === "number" && n > 0;
     const duration = valid(ex.duration) ? ex.duration : ex.options.map(o => o?.duration).find(valid) ?? 60;
@@ -216,6 +225,37 @@ const MIGRATE = { work: migratePomodoro, evening: migrateEvening };
 
 export function isChoiceCard(ex) {
   return Array.isArray(ex?.options) && ex.options.length > 0;
+}
+
+// ── Variable-length cards ──
+//
+// A card flagged variableLength waits when it comes up so its length can be
+// set there, in whole minutes, from VARIABLE_MIN up to the card's own
+// maxDuration (never above VARIABLE_MAX). Its `duration` is the default the
+// picker starts from — and all a build without this feature knows, so the
+// card still runs a sensible length there. Not combined with options: a card
+// that is both would ask two questions every time it came up, so the choice
+// wins and the flag is dropped on load.
+export const VARIABLE_MIN = 60;
+export const VARIABLE_MAX = 30 * 60;
+const VARIABLE_STEP = 60;
+
+export function isVariableCard(ex) {
+  return !!ex?.variableLength && !isChoiceCard(ex);
+}
+
+export function variableMax(ex) {
+  const m = typeof ex?.maxDuration === "number" && ex.maxDuration > 0 ? ex.maxDuration : VARIABLE_MAX;
+  return Math.min(VARIABLE_MAX, Math.max(VARIABLE_MIN, m));
+}
+
+// One press of − or +. A default that isn't on a whole minute (90s) snaps to
+// the neighbouring minute first, so the steps land on round numbers after.
+export function stepLength(current, dir, max) {
+  const next = dir > 0
+    ? (current % VARIABLE_STEP ? Math.ceil(current / VARIABLE_STEP) * VARIABLE_STEP : current + VARIABLE_STEP)
+    : (current % VARIABLE_STEP ? Math.floor(current / VARIABLE_STEP) * VARIABLE_STEP : current - VARIABLE_STEP);
+  return Math.min(max, Math.max(VARIABLE_MIN, next));
 }
 
 // The one place an option is merged into its card. Everything that times a
@@ -528,6 +568,8 @@ function validateBody(kind, b) {
       if (!ex || typeof ex !== "object") return "An exercise is not an object";
       if (!ex.title) return `${where} has no title`;
       if (!ex.section) return `${where} has no section`;
+      if (ex.variableLength != null && typeof ex.variableLength !== "boolean") return `${where} has a variableLength that is not true or false`;
+      if (ex.maxDuration != null && !(typeof ex.maxDuration === "number" && ex.maxDuration > 0)) return `${where} has no valid maxDuration (seconds)`;
       if (ex.options != null) {
         if (!Array.isArray(ex.options)) return `${where} has an options value that is not a list`;
         // migrateEvening gives a card without a duration its first option's,
@@ -653,7 +695,10 @@ export function presetSchemaText(kind) {
 // down transitionTime between cards.
 // options (optional) makes a card a pick-one: the card waits until one option
 // is tapped. Each option has a title and steps, and may set its own duration,
-// bilateral and timing — the card's apply to any it leaves out.`;
+// bilateral and timing — the card's apply to any it leaves out.
+// variableLength: true (optional, not with options) lets the length be set
+// when the card comes up, in 1-minute steps from 60 seconds up to maxDuration
+// (seconds, at most 1800 = 30 min). duration is the default it starts at.`;
   const example = kind === "work"
     ? { name: "Busy day", phases: d.phases, durations: d.durations, microEnabled: d.microEnabled,
         loopsUntilShort: d.loopsUntilShort, setsUntilLong: d.setsUntilLong,
@@ -673,6 +718,9 @@ export function presetSchemaText(kind) {
             { title: "Reclined Hero", timing: "2 min", duration: 120, bilateral: false,
               steps: ["Kneel, sit back between the heels", "Lower onto forearms or the floor, only as far as is comfortable"] },
           ],
+        }, {
+          id: 4, section: "Lying", title: "Box breathing", timing: "", duration: 600, variableLength: true, maxDuration: 1800,
+          steps: ["Lie on your back, one hand on the belly", "Inhale 4, hold 4, exhale 4, hold 4"],
         }] };
   return `${note}\n\n${JSON.stringify(example, null, 2)}`;
 }

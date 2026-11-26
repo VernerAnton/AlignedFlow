@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { playPulseTone, playRingTone, playSide2Chime, playExerciseCompleteSound, playExerciseStartSound, playDoneSound, playEndingTick, unlockAudio } from "./sounds";
 import { sendNotification } from "./notifications";
-import { computeSectionColors, isChoiceCard, resolveExercise } from "./dataStore";
+import { computeSectionColors, isChoiceCard, resolveExercise, isVariableCard, variableMax, stepLength, VARIABLE_MIN } from "./dataStore";
 import useWakeLock from "./useWakeLock";
 
 const SWITCH_RING_COUNT = 5;
@@ -151,9 +151,16 @@ function SwitchRings({ switchSecsLeft, color, cardRect, isMobile, railW }) {
   );
 }
 
+// A variable card's length as the picker shows it: "12 min", or "1:30 min"
+// for a default that isn't a whole minute.
+function fmtLength(secs) {
+  const m = Math.floor(secs / 60), r = secs % 60;
+  return r ? `${m}:${String(r).padStart(2, "0")} min` : `${m} min`;
+}
+
 // `card` is the exercise as written; `ex` is it resolved against any pick.
 // They are the same object for an ordinary card.
-function ExerciseCard({ card, ex, color, sideLabel, totalCount, showOptions, picked, onPick }) {
+function ExerciseCard({ card, ex, color, sideLabel, totalCount, showOptions, picked, onPick, lengthControl }) {
   const choice = isChoiceCard(card);
   const optionCount = choice ? card.options.length : 0;
   const isPicked = choice && picked != null && !!card.options[picked];
@@ -162,7 +169,11 @@ function ExerciseCard({ card, ex, color, sideLabel, totalCount, showOptions, pic
   // A choice card shows its heading and the moves to pick from until one is
   // running; after that it reads as that move, with the heading kept above it.
   const title = listing ? card.title : ex.title;
-  const timing = listing ? `${optionCount} option${optionCount === 1 ? "" : "s"}` : ex.timing;
+  // A variable card's timing text would go stale the moment its length is
+  // changed, so it shows the length itself instead.
+  const timing = listing ? `${optionCount} option${optionCount === 1 ? "" : "s"}`
+    : isVariableCard(card) ? `${fmtLength(ex.duration)}${ex.bilateral ? " · both sides" : ""}`
+    : ex.timing;
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "1.4rem 1.4rem 1.1rem", overflow: "hidden" }}>
@@ -192,6 +203,16 @@ function ExerciseCard({ card, ex, color, sideLabel, totalCount, showOptions, pic
         <div style={{ fontSize: "0.63rem", fontFamily: "'DM Mono', monospace", color: `${color}bb`, letterSpacing: "0.05em" }}>{timing}</div>
       </div>
       <div style={{ height: 1, background: "rgba(255,255,255,0.06)", marginBottom: "0.85rem", flexShrink: 0 }} />
+      {lengthControl && (
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: "1.1rem", marginBottom: "0.9rem" }}>
+          <button aria-label="Shorter" onClick={lengthControl.onShorter} disabled={ex.duration <= VARIABLE_MIN} style={stepperBtn(color, ex.duration <= VARIABLE_MIN)}>−</button>
+          <div style={{ textAlign: "center", minWidth: 104 }}>
+            <div style={{ fontSize: "1.45rem", fontFamily: "'DM Mono', monospace", color: "#f0ece4", letterSpacing: "0.02em" }}>{fmtLength(ex.duration)}</div>
+            <div style={{ fontSize: "0.55rem", fontFamily: "'DM Mono', monospace", color: "rgba(255,255,255,0.32)", letterSpacing: "0.08em", marginTop: "0.15rem" }}>up to {fmtLength(lengthControl.max)}</div>
+          </div>
+          <button aria-label="Longer" onClick={lengthControl.onLonger} disabled={ex.duration >= lengthControl.max} style={stepperBtn(color, ex.duration >= lengthControl.max)}>+</button>
+        </div>
+      )}
       <div style={{ flex: 1, overflow: "auto" }}>
         {listing ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
@@ -237,6 +258,12 @@ function ExerciseCard({ card, ex, color, sideLabel, totalCount, showOptions, pic
   );
 }
 
+const stepperBtn = (color, off) => ({
+  width: 44, height: 44, borderRadius: 8, border: `1px solid ${off ? "rgba(255,255,255,0.08)" : color + "55"}`,
+  background: "transparent", color: off ? "rgba(255,255,255,0.18)" : color, fontSize: "1.25rem",
+  fontFamily: "'DM Mono', monospace", cursor: off ? "default" : "pointer", touchAction: "manipulation",
+});
+
 // ── Root ────────────────────────────────────────────────────────────────────
 
 export default function EveningRoutine({ config, patchPreset, onRuntime }) {
@@ -281,14 +308,29 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
     choicesRef.current = id == null ? {} : { ...choicesRef.current, [id]: optIdx };
     setChoices(choicesRef.current);
   };
+  // Lengths set on variable cards this run, by exercise id — run state only,
+  // like the picks above, so the preset keeps its default.
+  const [lengths, setLengths] = useState({});
+  const lengthsRef = useRef({});
+  const setLength = (id, secs) => {
+    lengthsRef.current = id == null ? {} : { ...lengthsRef.current, [id]: secs };
+    setLengths(lengthsRef.current);
+  };
+  const resolveCard = (ex, choice, length) => {
+    const r = resolveExercise(ex, choice);
+    return length != null ? { ...r, duration: length } : r;
+  };
   // Every card as it will actually run. Timing reads these rather than the raw
-  // exercises, so a picked option's own duration and sides apply everywhere.
+  // exercises, so a picked option's own duration and sides, or a chosen
+  // length, apply everywhere.
   const resolved = useMemo(
-    () => exercises.map(ex => resolveExercise(ex, choices[ex.id])),
-    [exercises, choices]
+    () => exercises.map(ex => resolveCard(ex, choices[ex.id], lengths[ex.id])),
+    [exercises, choices, lengths]
   );
+  // The same from the refs, for handlers that act before the next render.
+  const runAs = (i) => resolveCard(exercises[i], choicesRef.current[exercises[i].id], lengthsRef.current[exercises[i].id]);
   const isUnpicked = (i) => isChoiceCard(exercises[i]) && choicesRef.current[exercises[i].id] == null;
-  const needsWait = (i) => !!config.tapToStart || isChoiceCard(exercises[i]);
+  const needsWait = (i) => !!config.tapToStart || isChoiceCard(exercises[i]) || isVariableCard(exercises[i]);
 
   // The transition gap is either the preset's get-into-position time or, after
   // a tap, a short count-in. The count-in starts from a full card, so the fill
@@ -421,6 +463,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
   // visibility count as reasons to measure too.
   const curPick = choices[exercises[index].id];
   const showOptions = isChoiceCard(exercises[index]) && (phase === "idle" || phase === "ready");
+  const showLength = isVariableCard(exercises[index]) && (phase === "idle" || phase === "ready");
   useLayoutEffect(() => {
     // Don't re-measure during switching — the overlay can cause sub-pixel reflow
     if (subPhase === "switching") return;
@@ -430,7 +473,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
       setCardRect({ top: r.top, left: r.left, width: r.width, height: r.height });
       cardRectRef.current = { top: r.top, left: r.left, width: r.width, height: r.height };
     }
-  }, [index, curPick, showOptions]);
+  }, [index, curPick, showOptions, showLength]);
 
   // Update card rect on resize or animation settle
   useEffect(() => {
@@ -450,7 +493,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
       clearTimeout(t);
       if (interval) clearInterval(interval);
     };
-  }, [index, subPhase, phase, curPick]);
+  }, [index, subPhase, phase, curPick, showLength]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
 
@@ -683,7 +726,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
   const enterReady = (i) => {
     setIsPlaying(false);
     setPhase("ready"); phaseRef.current = "ready";
-    setTimeLeft(getEffectiveDuration(resolveExercise(exercises[i], choicesRef.current[exercises[i].id]), switchBuffer));
+    setTimeLeft(getEffectiveDuration(runAs(i), switchBuffer));
     resetAnimatingRef.current = true;
     segmentDurationRef.current = 600;
     segmentStartRef.current = performance.now();
@@ -742,6 +785,21 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
     else startRoutine();
   };
 
+  // − / + on a variable card, before it starts. Moves the rail with it, so the
+  // length on screen is the one that will run.
+  const adjustLength = (dir) => {
+    const ph = phaseRef.current;
+    if ((ph !== "idle" && ph !== "ready") || rewindingRef.current) return;
+    const i = indexRef.current;
+    const card = exercises[i];
+    if (!isVariableCard(card)) return;
+    const current = runAs(i).duration;
+    const next = stepLength(current, dir, variableMax(card));
+    if (next === current) return;
+    setLength(card.id, next);
+    setTimeLeft(getEffectiveDuration({ ...runAs(i), duration: next }, switchBuffer));
+  };
+
   const onPlayPause = () => {
     if (phase === "done") return;
     if (phase === "ready") { beginCard(); return; }
@@ -761,6 +819,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
     setPhase("idle"); phaseRef.current = "idle";
     setStartCountdown(null);
     setChoice(null);
+    setLength(null);
     setGap({ len: config.transitionTime, countIn: false });
 
     // If already at first card, just reset timer
@@ -849,7 +908,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
   // and pause it again in one press. Handlers go through a ref because the
   // listener is attached once.
   const keyRef = useRef(null);
-  keyRef.current = { onPlayPause, pickOption };
+  keyRef.current = { onPlayPause, pickOption, adjustLength };
   useEffect(() => {
     const onKey = (e) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -859,6 +918,10 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
         if (!e.repeat) keyRef.current.onPlayPause();
       } else if (/^[1-9]$/.test(e.key) && !e.repeat) {
         keyRef.current.pickOption(Number(e.key) - 1);
+      } else if (e.key === "-" || e.key === "_") {
+        keyRef.current.adjustLength(-1);
+      } else if (e.key === "+" || e.key === "=") {
+        keyRef.current.adjustLength(1);
       }
     };
     document.addEventListener("keydown", onKey);
@@ -913,7 +976,7 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
         {phase === "ready" && cardRect && (
           <div style={{ position: "fixed", top: cardRect.top - 36, left: "50%", transform: "translateX(-50%)", zIndex: 15, pointerEvents: "none" }}>
             <div style={{ fontSize: "0.58rem", letterSpacing: "0.15em", textTransform: "uppercase", fontFamily: "'DM Mono', monospace", color: `${COLOR}cc`, padding: "0.25rem 0.75rem", border: `1px solid ${COLOR}44`, borderRadius: 20, background: "rgba(15,14,12,0.88)", whiteSpace: "nowrap" }}>
-              {unpicked ? "Choose a move" : "Tap to start"}{isMobile ? "" : unpicked ? " · 1–9" : " · space"}
+              {unpicked ? "Choose a move" : "Tap to start"}{isMobile ? "" : unpicked ? " · 1–9" : showLength ? " · space · −/+" : " · space"}
             </div>
           </div>
         )}
@@ -1017,6 +1080,9 @@ export default function EveningRoutine({ config, patchPreset, onRuntime }) {
                   showOptions={isCurrent && showOptions}
                   picked={choices[exercises[ci].id]}
                   onPick={isCurrent && showOptions ? pickOption : null}
+                  lengthControl={isCurrent && showLength
+                    ? { max: variableMax(exercises[ci]), onShorter: () => adjustLength(-1), onLonger: () => adjustLength(1) }
+                    : null}
                   sideLabel={isCurrent && resolved[ci].bilateral && phase === "exercise"
                     ? (subPhase === "side1" ? "Side 1" : subPhase === "side2" ? "Side 2" : null)
                     : null
